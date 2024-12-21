@@ -1,0 +1,932 @@
+<!doctype html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ESP Config</title>
+
+    <style>
+        button {
+            background-color: rgba(66, 66, 66, 0.5);
+            color: #CFD8DC;
+            font-size: 1em;
+            border: none;
+            border-radius: 8px;
+            padding: 1rem 1.5rem 1rem 1.5rem;
+            filter: drop-shadow(0 4px 3px rgb(0 0 0 / 0.07)) drop-shadow(0 2px 2px rgb(0 0 0 / 0.06));
+            cursor: pointer;
+        }
+
+        button:hover:not(.no-hover) {
+            background-color: rgba(66, 66, 66, 0.95);
+            transition: all 0.15s linear;
+        }
+        
+        button.no-hover {
+            cursor: unset !important;
+        }
+
+        .icon-btn {
+            border-radius: 100% !important;
+            padding: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+        }
+
+        .icon-btn svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .cont-files > button {
+            border-radius: unset;
+            cursor: unset;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .cont-files > button:hover {
+            background-color: rgba(66, 66, 66, 0.5);
+        }
+
+        .cont-files :first-child {
+            border-top-right-radius: 8px;
+            border-top-left-radius: 8px;
+        }
+
+        .cont-files :last-child {
+            border-bottom-right-radius: 8px;
+            border-bottom-left-radius: 8px;
+        }
+
+        .small-btn {
+            font-size: 0.85em;
+            padding: 0.7rem 1.2rem 0.7rem 1.2rem;
+        }
+
+        .title-text {
+            color: #BDBDBD;
+            font-size: 0.8em;
+            margin-left: auto;
+            margin-right: auto;
+            width: fit-content;
+        }
+
+        input {
+            background-color: rgba(255, 255, 255, 0);
+            outline: none;
+            padding: 0.5rem;
+            border: 1px rgb(128, 128, 128) solid;
+            border-radius: 4px;
+            color: #CFD8DC;
+        }
+
+        .cont {
+            margin: 2rem auto 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .small {
+            width: 300px;
+        }
+
+        .med {
+            width: 500px;
+        }
+
+        .loader{
+            display: block;
+            position: relative;
+            height: 12px;
+            min-width: 80%;
+            max-width: 80%;
+            border: 1px solid #CFD8DC;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .loader:after{
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: inherit;
+            background: #FF3D00;
+            transition: width 0.5s ease-in-out;
+        }
+
+        .loader-animated{
+            display: block;
+            position: relative;
+            height: 8px;
+            width: 80%;
+            border: 1px solid #fff;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .loader-animated::after {
+            content: '';
+            width: 40%;
+            height: 100%;
+            background: #FF3D00;
+            position: absolute;
+            top: 0;
+            left: 0;
+            box-sizing: border-box;
+            animation: animloader 2s linear infinite;
+        }
+
+        @keyframes animloader {
+            0% {
+                left: 0;
+                transform: translateX(-100%);
+            }
+            100% {
+                left: 100%;
+                transform: translateX(0%);
+            }
+        }
+
+
+        .noselect {
+            -webkit-touch-callout: none; /* iOS Safari */
+            -webkit-user-select: none; /* Safari */
+            -khtml-user-select: none; /* Konqueror HTML */
+            -moz-user-select: none; /* Old versions of Firefox */
+            -ms-user-select: none; /* Internet Explorer/Edge */
+            user-select: none; /* Non-prefixed version, currently
+                                  supported by Chrome, Edge, Opera and Firefox */
+        }
+
+        .toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: rgba(66, 66, 66, 0.5);
+            padding: 0.4rem;
+            border: 1px solid rgba(66, 66, 66, 0.8);
+            border-radius: 4px;
+            font-size: 0.85em;
+            position: relative;
+        }
+
+        .toggle > * {
+            display: block;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+        }
+
+        .toggle > :first-child {
+            margin-right: 0.4rem;
+        }
+
+        .toggle .select {
+            position: absolute;
+            background-color: #CFD8DC;
+            color: rgb(44, 44, 44);
+            cursor: unset;
+            z-index: 9999;
+            transition: left 0.1s ease-in-out;
+        }
+
+        .toggle > *:not(.select) {
+            cursor: pointer;
+        }
+
+        .toggle > *:not(.select):hover {
+            background-color: rgba(89, 89, 89, 0.6);
+            transition: all 0.15s linear;
+        }
+
+    </style>
+</head>
+<body style="background-color: #212121; color: #CFD8DC; font-family: sans-serif; overflow: auto">
+
+<div id="ota-panel" class="screen-panel">
+    <p class="title-text" style="margin-top: 2rem; margin-bottom: -1rem">OTA UPDATE</p>
+
+    <div id="ota-start-div" class="cont med" style="align-items: center">
+        <span class="loader" id="ota-loader" style="display: none;"></span>
+
+        <div id="select-toggle" class="toggle noselect">
+            <span onclick="changeUploadMode(this, true)">Firmware</span>
+            <span onclick="changeUploadMode(this, false)">Filesystem</span>
+            <span class="select">Firmware</span>
+        </div>
+
+        <button id="ota-upload-file-btn" style="display: flex; align-items: center; justify-content: center; font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
+            <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
+            <span style="margin-left: 0.5rem">Upload file</span>
+        </button>
+
+        <input style="display: none" id="ota-file-input" type='file' name='update' onchange="onOtaUpload(true)" accept=".bin,.bin.gz">
+    </div>
+</div>
+
+<div id="settings-panel" class="screen-panel">
+    <div class="cont med"><hr style="width: 100%;"></div>
+
+    <p class="title-text" style="margin-top: 2rem;">SETTINGS</p>
+
+    <div id="custom-actions-div" style="width: 300px; margin: 2rem auto 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1rem;">
+    </div>
+
+    <div id="env-div" class="cont med">
+        <hr style="width: 100%;">
+
+        <p class="title-text" style="margin-top: 0">ENVIRONMENT VARIABLES</p>
+
+        <div id="env-container" class="cont med">
+        </div>
+
+        <button onclick="save()" style="margin-top: 2rem; width: fit-content; margin-left: auto; margin-right: auto">Save</button>
+
+        <label style="margin: 0 auto 0 auto" id="status"></label>
+    </div>
+</div>
+
+<div id="file-nav" class="cont med screen-panel">
+    <div style="display: flex; align-items: center; justify-content: center; margin-top: 2rem;">
+        <p class="title-text" style="margin: 0 0 1.2rem 0">FILE NAVIGATION</p>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: center;">
+        <button class="icon-btn" title="Go back" onclick="goBack(); return false;" style="width: 24px; height: 24px;">..</button>
+        <button id="current-path-text" class="title-text" style="margin: 0 0 0 0.5rem; padding: 0.5rem;"></button>
+    </div>
+
+    <div id="files-container" class="cont med cont-files" style="margin: 0.5rem auto -1rem auto; gap: 0;">
+    </div>
+</div>
+
+<div id="wifi-config-cont" class="cont med screen-panel">
+    <div style="display: flex; align-items: center; justify-content: center; margin-top: 2rem;">
+        <p class="title-text" style="margin: 0; padding-right: 1rem">WIRELESS CONNECTION</p>
+        <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Refresh</button>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: center; margin-top: 1rem;">
+        <p id="wifi-status-text" class="title-text" style="margin: 0;"></p>
+    </div>
+
+    <span class="loader-animated" id="wifi-loader" style="margin: 1.5rem auto 0 auto; width: 20%; height: 8px;"></span>
+    <div id="wifi-list" class="cont med" style="margin: 1rem auto -1rem auto; gap: 0;">
+    </div>
+</div>
+
+
+<div class="cont med" style="align-items: center; gap: unset">
+    <hr style="width: 100%">
+    <p class="title-text" style="margin-bottom: -0.1rem;">DEVICE ID: <span id="text-id" style="font-weight: bold"></span></p>
+    <p class="title-text" style="margin-bottom: -0.1rem;">MAC ADDRESS: <span id="text-mac" style="font-weight: bold"></span></p>
+    <p class="title-text" style="margin-bottom: -0.1rem;">FREE SPACE: <span id="text-space-free" style="font-weight: bold"></span> bytes / <span id="text-space-total" style="font-weight: bold"></span> bytes</p>
+    <p class="title-text">FREE HEAP: <span id="text-ram" style="font-weight: bold"></span> bytes</p>
+    <button id="browser-btn" class="small-btn" style="margin-top: 0.5rem">File browser</button>
+    <button id="settings-btn" class="small-btn" style="margin-top: 0.5rem">Settings</button>
+    <button id="wifi-btn" class="small-btn" style="margin-top: 0.5rem">Wireless Connection</button>
+</div>
+
+<button id="delete-svg" class="icon-btn" title="Delete file">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M280-120q-33 0-56-23t-24-57v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23 57t-57 23H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
+</button>
+<button id="download-svg" class="icon-btn" style="margin-right: 0.5rem;" title="Download file">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56-23t-24-57v-120h80v120h480v-120h80v120q0 33-23 57t-57 23H240Z"/></svg>
+</button>
+<button id="file-svg" class="icon-btn" style="margin-right: 0.5rem; cursor: unset;">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56-23t-24-57v-640q0-33 24-56t56-24h320l240 240v480q0 33-23 57t-57 23H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
+</button>
+<button id="folder-svg" class="icon-btn" style="margin-right: 0.5rem;" title="Open directory">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M160-160q-33 0-56-23t-24-57v-480q0-33 24-56t56-24h240l80 80h320q33 0 57 24t23 56H447l-80-80H160v480l96-320h684L837-217q-8 26-29 42t-48 15H160Zm84-80h516l72-240H316l-72 240Zm0 0 72-240-72 240Zm-84-400v-80 80Z"/></svg>
+</button>
+<button id="wifi-4-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q95-97 220-148t260-52q136 0 261 52t219 148L480-120Zm0-114 364-364q-79-60-172-91t-192-31q-99 0-192 31t-172 91l364 364Z"/></svg>
+</button>
+<button id="wifi-3-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q96-98 220-149t260-51q137 0 261 51t219 149L480-120ZM361-353q25-18 56-28t63-10q33 0 64 10t55 28l245-245q-78-59-170-90t-194-32q-101 0-193 32t-171 90l245 245Z"/></svg>
+</button>
+<button id="wifi-2-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q96-98 220-149t260-51q137 0 261 51t219 149L480-120ZM299-415q38-28 84-43t97-16q51 0 97 16t84 43l183-183q-78-59-170-90t-194-32q-101 0-193 32t-171 90l183 183Z"/></svg>
+</button>
+<button id="wifi-1-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q96-98 220-149t260-51q137 0 261 51t219 149L480-120ZM232-482q53-38 116-59t132-22q69 0 132 22t116 59l116-116q-78-59-170-90t-194-32q-101 0-193 32t-171 90l116 116Z"/></svg>
+</button>
+<button id="wifi-0-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
+    <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q95-97 220-148t260-52q136 0 261 52t219 148L480-120Z"/></svg>
+</button>
+<script>
+    let isUploadFirmware = true;
+    let currentBrowserPath = '/';
+
+    const filesContainer = document.getElementById('files-container');
+    const fileNavDiv = document.getElementById('file-nav');
+    const settingsDiv = document.getElementById('settings-panel');
+    const otaPanel = document.getElementById('ota-panel');
+    fileNavDiv.style.display = 'none';
+
+    const deleteSvg = document.getElementById('delete-svg');
+    deleteSvg.style.display = 'none';
+
+    const downloadSvg = document.getElementById('download-svg');
+    downloadSvg.style.display = 'none';
+
+    const fileSvg = document.getElementById('file-svg');
+    fileSvg.style.display = 'none';
+
+    const folderSvg = document.getElementById('folder-svg');
+    folderSvg.style.display = 'none';
+
+    const currentPathText = document.getElementById('current-path-text');
+    currentPathText.innerText = currentBrowserPath;
+
+    const otaLoader = document.getElementById('ota-loader');
+
+    const divElements = document.querySelectorAll('.screen-panel');
+    divElements.forEach(d => d.style.display = 'none');
+
+    let currentMode = 0;
+    const modeButtons = [
+        {
+            btn: document.getElementById('settings-btn'),
+            divToShow: settingsDiv,
+        },
+        {
+            btn: document.getElementById('browser-btn'),
+            divToShow: fileNavDiv,
+            onChange: () => updateFiles()
+        },
+        {
+            btn: document.getElementById('wifi-btn'),
+            divToShow: document.getElementById('wifi-config-cont'),
+            onChange: () => getWifiSettings()
+        }
+    ];
+    modeButtons.forEach((b, i) => b.btn.onclick = () => changeMode(i));
+
+    function changeMode(index) {
+        const btnObj = modeButtons[index];
+
+        for (const btn of modeButtons) {
+            btn.btn.style.display = 'unset';
+        }
+
+        for (const div of divElements) {
+            div.style.display = 'none';
+        }
+
+        btnObj.btn.style.display = 'none';
+        btnObj.divToShow.style.display = 'unset';
+        currentMode = index;
+
+        if (currentMode == 0) {
+            otaPanel.style.display = 'unset';
+        }
+
+        if (btnObj.onChange) {
+            btnObj.onChange();
+        }
+    }
+    setTimeout(() => {
+        changeMode(currentMode);
+    }, 100);
+
+    function unescapeStr(str) {
+        return str ? str.replaceAll('|:', ":").replaceAll('|;', ";").replaceAll("|+", "+") : "";
+    }
+
+    function escapeStr(str) {
+        return str ? str.replaceAll(':', "|:").replaceAll(';', "|;").replaceAll("+", "|+") : "";
+    }
+
+    function splitEscaped(str, separator) {
+        const ret = [];
+        let currentStr = 0;
+        let lastIndex = 0;
+        let escaped = false;
+
+        for (let i = 0; i < str.length; i++) {
+            const c = str[i];
+
+            if (c == '|' && !escaped) {
+                escaped = true;
+            } else if (c == separator && !escaped) {
+                ret[currentStr] = str.substring(lastIndex, i);
+                lastIndex = i+1;
+                currentStr++;
+            } else {
+                escaped = false;
+            }
+        }
+
+        return ret;
+    }
+
+    function save() {
+        const arr = document.querySelectorAll('.env-input');
+
+        const obj = {};
+        arr.forEach(node => {
+            obj[node.id.split('input-', 2)[1]] = node.value;
+        });
+
+        if (window.confirm('Save environment variables?')) {
+            let str = '';
+            Object.keys(obj).forEach(key => str += `${escapeStr(key)}:${escapeStr(obj[key])}:;`);
+            doRequest('save', str, "POST", (success, res) => {
+                alert(success ? 'Environment saved successfully!' : `Error while saving: ${res}`);
+                location.reload();
+            });
+        }
+    }
+
+    function resetWireless() {
+        if (confirm('Reset all wireless settings?')) {
+            doRequest('reset', '', "POST");
+        }
+    }
+
+    function customAction(eventId) {
+        if (confirm('Do action: ' + eventId + ' ?')) {
+            doRequest('customa', eventId, "POST", (success) => {
+                if (success) {
+                    window.alert('Action executed successfully!');
+                    location.reload();
+                }
+            });
+        }
+    }
+
+    function doRequest(uri, data, method, cb) {
+        var xhr = new XMLHttpRequest();
+        xhr.open(method, (window.location.href.endsWith('/') ? window.location.href : window.location.href + '/') + uri, true);
+        xhr.setRequestHeader('Content-Type', 'text/plain');
+        xhr.send(data);
+
+        xhr.onreadystatechange = function () {
+            if (this.readyState !== 4) return;
+
+            const success = this.status === 200;
+            if (cb) {
+                cb(success, this.responseText);
+            }
+        };
+    }
+
+    function updateFiles() {
+        doRequest('files', currentBrowserPath, "POST", (success, response) => {
+            if (success) {
+                filesContainer.innerHTML = '';
+
+                if (!response || response === '') {
+                    const text = document.createElement('p');
+                    text.innerText = 'No files found.';
+                    text.style.margin = '1rem auto 0 auto';
+                    filesContainer.appendChild(text);
+                    return;
+                }
+
+                const files = [];
+                const fileSplit = response.split(';');
+                for (const str of fileSplit) {
+                    if (str === '') {
+                        continue;
+                    }
+
+                    const split = str.split(':');
+                    files.push({
+                        name: split[0],
+                        isDir: split[1] === 'true',
+                        size: split[2]
+                    });
+                }
+
+                files.sort((f1, f2) => f1.name.localeCompare(f2.name));
+
+                for (const file of files) {
+                    const mainElement = document.createElement('button');
+                    mainElement.classList.add('small-btn');
+
+                    const nameDiv = document.createElement('div');
+                    nameDiv.style.display = 'flex';
+                    nameDiv.style.alignItems = 'center';
+
+                    const nameIcon = (file.isDir ? folderSvg : fileSvg).cloneNode(true);
+                    nameIcon.style.display = 'unset';
+                    nameIcon.style.marginRight = '0.5rem';
+
+                    if (file.isDir) {
+                        nameIcon.onclick = () => {
+                            let newPath = currentBrowserPath.substring(0, currentBrowserPath.lastIndexOf('/'));
+                            if (!newPath || newPath === '') {
+                                newPath = '/';
+                            }
+
+                            currentBrowserPath = newPath + file.name;
+                            updateFiles();
+                        };
+                    }
+
+                    nameDiv.appendChild(nameIcon);
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.innerText = file.name;
+                    nameDiv.appendChild(nameSpan);
+
+                    mainElement.appendChild(nameDiv);
+
+                    const btnDiv = document.createElement('div');
+
+                    if (!file.isDir) {
+                        const newDownNode = downloadSvg.cloneNode(true);
+                        newDownNode.style.display = 'unset';
+                        btnDiv.appendChild(newDownNode);
+
+                        newDownNode.onclick = () => {
+                            downloadFile((currentBrowserPath.endsWith('/') ? currentBrowserPath : currentBrowserPath + '/') + file.name);
+                        };
+
+                        const newNode = deleteSvg.cloneNode(true);
+                        newNode.style.display = 'unset';
+                        btnDiv.appendChild(newNode);
+                        newNode.onclick = () => {
+                            deleteFile((currentBrowserPath.endsWith('/') ? currentBrowserPath : currentBrowserPath + '/') + file.name);
+                        };
+                    }
+
+                    mainElement.appendChild(btnDiv);
+                    filesContainer.appendChild(mainElement);
+                    currentPathText.innerText = currentBrowserPath;
+                }
+            }
+        });
+    }
+
+    function goBack() {
+        currentBrowserPath = currentBrowserPath.substring(0, currentBrowserPath.lastIndexOf('/'));
+        if (!currentBrowserPath || currentBrowserPath === '') {
+            currentBrowserPath = '/';
+        }
+        updateFiles();
+    }
+
+    function downloadFile(path) {
+        const xhr = new XMLHttpRequest();
+
+        xhr.open('POST',  (window.location.href.endsWith('/') ? window.location.href : window.location.href + '/') + 'files/download', true);
+        xhr.responseType = 'blob';
+
+        xhr.onload = (e) => {
+            var blob = e.currentTarget.response;
+            var contentDispo = e.currentTarget.getResponseHeader('Content-Disposition');
+            var file = window.URL.createObjectURL(blob);
+
+            var link = document.createElement("a"); // Or maybe get it from the current document
+            link.target = '_blank';
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = contentDispo;
+            link.click();
+        };
+
+        xhr.send(path);
+    }
+
+    function deleteFile(path) {
+        if (confirm(`Delete file "${path}"?`)) {
+            doRequest('files/delete', path, 'POST', () => {
+                updateFiles();
+            });
+        }
+    }
+
+    function onOtaUpload(hasFile) {
+        const input = document.getElementById('ota-file-input');
+        const btn = document.getElementById('ota-submit');
+
+        if (hasFile) {
+            const file = input.files[0];
+
+            if (file) {
+                divElements.forEach(d => d.style.display = 'none');
+                modeButtons.forEach(b => b.btn.style.display = 'none');
+                otaPanel.style.display = 'unset';
+                document.getElementById('ota-upload-file-btn').style.display = 'none';
+                document.getElementById('select-toggle').style.display = 'none';
+                otaLoader.style.display = 'unset';
+
+                otaLoader.style.width = 0 + '%';
+
+                const formData = new FormData();
+                formData.append('update', file);
+
+                const request = new XMLHttpRequest();
+                request.open('POST', '/config/update/' + (isUploadFirmware ? 'firmware' : 'filesystem'));
+
+                let percent = 0;
+
+                request.upload.onprogress = (progress) => {
+                    if(progress.lengthComputable){
+                        var max = progress.total;
+                        var current = progress.loaded;
+
+                        percent = (current * 100)/max;
+                    }
+                };
+
+                let hasError = false;
+                let intervalId;
+                intervalId = setInterval(() => {
+                    if (hasError) {
+                        clearInterval(intervalId);
+                        return;
+                    }
+
+                    otaLoader.style.width = percent + '%';
+
+                    if(percent >= 100)
+                    {
+                        clearInterval(intervalId);
+
+                        setTimeout(() => {
+                            alert('Upload completed successfully!');
+                            location.reload();
+                        }, 650);
+                    }
+                }, 600);
+
+                request.send(formData);
+
+                request.onreadystatechange = function () {
+                    if (this.readyState !== 4) return;
+
+                    const success = this.status === 200;
+                    if (!success) {
+                        hasError = true;
+                        alert(`Error during OTA update: ${this.responseText}`);
+                        location.reload();
+                    }
+                };
+            }
+
+            return;
+        }
+
+        input.value = null;
+        input.click();
+    }
+
+    function changeUploadMode(clickedElement, isFirmware) {
+        isUploadFirmware = isFirmware;
+
+        const toggleDiv = document.getElementById('select-toggle');
+        const selectElement = toggleDiv.querySelector('.select');
+        selectElement.style.left = (clickedElement.offsetLeft === 0 ? 6 : clickedElement.offsetLeft) + 'px';
+        selectElement.innerText = clickedElement.innerText;
+    }
+
+    changeUploadMode(document.getElementById('select-toggle').children[0], true);
+
+    function updateInfo() {
+        doRequest('info', undefined, 'GET', (success, response) => {
+            if (success) {
+                const split = splitEscaped(response, '+');
+                const name = split[0];
+                const mac = split[1];
+                const usedSpace = split[2];
+                const spaceTotal = split[3];
+                const freeHeap = split[4];
+                const env = split[5];
+                const actions = split[6];
+                const hasWifi = split[7];
+
+                document.title = name + ' - Config';
+                document.getElementById('text-id').innerText = name;
+                document.getElementById('text-mac').innerText = mac;
+                document.getElementById('text-space-free').innerText = usedSpace;
+                document.getElementById('text-space-total').innerText = spaceTotal;
+                document.getElementById('text-ram').innerText = freeHeap;
+
+                const envCont = document.getElementById('env-container');
+                envCont.innerHTML = '';
+
+                const envSplit = splitEscaped(env, ';');
+                for (const keyValue of envSplit) {
+                    const kvSplit = splitEscaped(keyValue, ':');
+                    const key = unescapeStr(kvSplit[0]);
+                    const value = unescapeStr(kvSplit[1]);
+
+                    if (!key || key === '') {
+                        continue;
+                    }
+
+                    const id = 'input-' + key;
+
+                    const mainElement = document.createElement('div');
+                    mainElement.style = 'display: flex; align-items: center; justify-content: space-between;';
+
+                    const label = document.createElement('label');
+                    label.style = 'margin-right: 1rem';
+                    label.for = id;
+                    label.innerText = key;
+                    mainElement.appendChild(label);
+
+                    const input = document.createElement('input');
+                    input.setAttribute('autocomplete', 'off');
+                    input.classList.add('env-input');
+                    input.style = 'flex: 1;';
+                    input.value = value;
+                    input.id = id;
+                    mainElement.appendChild(input);
+
+                    envCont.appendChild(mainElement);
+                }
+
+                const caCont = document.getElementById('custom-actions-div');
+                caCont.innerHTML = '';
+
+                const caSplit = splitEscaped(actions, ';');
+                for (const caEscaped of caSplit) {
+                    const ca = unescapeStr(caEscaped);
+
+                    if (ca === '') {
+                        continue;
+                    }
+
+                    const button = document.createElement('button');
+                    button.classList.add('ca-btn');
+                    button.onclick = () => customAction(ca);
+                    button.innerText = ca;
+                    caCont.appendChild(button);
+                }
+
+                if (envSplit.length === 0) {
+                    document.getElementById('env-div').style.display = 'none';
+                }
+
+                if (caSplit.length === 0) {
+                    document.getElementById('custom-actions-div').style.display = 'none';
+                }
+
+                if (envSplit.length === 0 && caSplit.length === 0) {
+                    document.getElementById('settings-panel').style.display = 'none';
+                }
+
+                if (hasWifi === '0') {
+                    setTimeout(() => changeMode(2), 100);
+                }
+            } else {
+                alert('Error while trying to fetch info from controller.')
+            }
+        });
+    }
+
+    updateInfo();
+
+    const WIFI_STATUS = {
+        WL_IDLE_STATUS: 0,
+        WL_NO_SSID_AVAIL: 1,
+        WL_SCAN_COMPLETED: 2,
+        WL_CONNECTED: 3,
+        WL_CONNECT_FAILED: 4,
+        WL_CONNECTION_LOST: 5,
+        WL_WRONG_PASSWORD: 6,
+        WL_DISCONNECTED: 7,
+        WL_CONNECTING: 43,
+        WL_NOT_STARTED: 58
+    };
+    const WIFI_STR = {
+        WL_IDLE_STATUS: "Changing status",
+        WL_NO_SSID_AVAIL: "SSID not found",
+        WL_SCAN_COMPLETED: "Scan complete",
+        WL_CONNECTED: "Connected to network",
+        WL_CONNECT_FAILED: "Connection failed",
+        WL_CONNECTION_LOST: "Connection lost",
+        WL_WRONG_PASSWORD: "Wrong password",
+        WL_DISCONNECTED: "Disconnected",
+        WL_CONNECTING: "Connecting",
+        WL_NOT_STARTED: "Not configured"
+    };
+
+    let loadingWifi = false;
+    function getWifiSettings() {
+        const loader = document.getElementById('wifi-loader');
+        loader.style.display = 'block';
+
+        if (loadingWifi) {
+            return;
+        }
+
+        const container = document.getElementById('wifi-list');
+        container.innerHTML = '';
+
+        const statusText = document.getElementById('wifi-status-text');
+        statusText.innerText = '';
+
+        loadingWifi = true;
+
+        doRequest('wifi', undefined, 'GET', (success, response) => {
+            loadingWifi = false;
+            loader.style.display = 'none';
+
+            if (!success) {
+                alert("Error while trying to get wifi info from board, please refresh the page and try again.");
+                return;
+            }
+
+            const split = splitEscaped(response, '+');
+            const currentSsid = unescapeStr(split[1]);
+            const status = parseInt(unescapeStr(split[2]));
+
+            if (status === WIFI_STATUS.WL_CONNECTING) {
+                loader.style.display = 'block';
+                container.innerHTML = '';
+                return;
+            } else if (status === WIFI_STATUS.WL_CONNECTED) {
+                statusText.innerText = `Current status: ${WIFI_STR.WL_CONNECTED} ${currentSsid}`;
+            } else {
+                const key = Object.keys(WIFI_STATUS).find(k => WIFI_STATUS[k] === status);
+                if (key) {
+                    statusText.innerText = `Current status: ${WIFI_STR[key]}`;
+                }
+            }
+
+            const networks = splitEscaped(split[0], ';').map(net => {
+                const ssidAndRssi = splitEscaped(net, ':');
+                const ssid = unescapeStr(ssidAndRssi[0]);
+                const rssi = parseInt(unescapeStr(ssidAndRssi[1]));
+                const rssiMapped = Math.ceil((Math.abs(rssi) / 24) - 1);
+
+                return {ssid, rssi, rssiMapped};
+            });
+            networks.sort((n1, n2) => n1.rssi > n2.rssi ? -1 : 1);
+
+            networks.forEach(net => {
+                const ssid = net.ssid;
+                const rssi = net.rssi;
+                const rssiMapped = net.rssiMapped;
+
+                if (!ssid || ssid === '' || !rssi || rssi === '') {
+                    return;
+                }
+
+                const btn = document.createElement('button');
+                btn.style = 'display: flex; align-items: center; justify-content: space-between;';
+                btn.classList.add('small-btn');
+                btn.classList.add('no-hover');
+
+                const nameDiv = document.createElement('div');
+                nameDiv.style = 'display: flex; align-items: center;';
+                btn.appendChild(nameDiv);
+
+                const signalSvg = document.getElementById(`wifi-${rssiMapped}-svg`).cloneNode(true);
+                signalSvg.style.display = 'unset';
+                signalSvg.style.marginRight = '0.5rem';
+                nameDiv.appendChild(signalSvg);
+
+                const ssidSpan = document.createElement('span');
+                ssidSpan.innerText = ssid;
+                nameDiv.appendChild(ssidSpan);
+
+                const connectBtn = document.createElement('button');
+                connectBtn.innerText = 'Connect';
+                connectBtn.classList.add('small-btn');
+                btn.appendChild(connectBtn);
+
+                btn.style.marginBottom = '0.5rem';
+                container.appendChild(btn);
+
+                connectBtn.onclick = () => {
+                    const pass = prompt(`Enter the password for the network ${ssid} below.`);
+                    if (!pass || pass === '') {
+                        alert('Invalid input.');
+                        return;
+                    }
+
+                    container.innerHTML = '';
+                    loader.style.display = 'block';
+
+                    doRequest('wifi', escapeStr(ssid) + ":" + escapeStr(pass) + ':', 'POST', (success, responseText) => {
+                        if (success) {
+                            alert('Connection attempt started, this page can be down for some time while connecting.');
+                            location.reload();
+                        } else {
+                            alert('Error while trying to connect: ' + responseText);
+                            setTimeout(() => {
+                                getWifiSettings();
+                            }, 500);
+                        }
+                    });
+                };
+            });
+        });
+    }
+</script>
+</body>
+</html>
