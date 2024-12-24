@@ -17,7 +17,32 @@ Include the lib package with ```#include "esp-config-page.h"```. Create a WebSer
 
 This will create a webpage containing a file browser and wireless network settings on the webserver instance that is passed to the setup function.
 
-https://github.com/davirxavier/esp-config-page/blob/ff86ded96d05f1b95f9293b2793273fb78927f96/examples/simple-usage.cpp#L1-L24
+````c++
+#include <Arduino.h>
+#include "esp-config-page.h"
+
+// Webserver instance
+WebServer server(80);
+
+void setup() {
+    Serial.begin(115200);
+    delay(2500);
+    Serial.println("Started.");
+
+    // Setup webpage function
+    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST");
+
+    // Begin webserver
+    server.begin();
+    Serial.println("Setup complete.");
+}
+
+void loop() {
+    // Call update every loop
+    server.handleClient();
+    ESP_CONFIG_PAGE::loop();
+}
+````
 
 ### Wireless Network Automatic Connection
 
@@ -25,6 +50,41 @@ This feature allows the board to try to connect to a wireless network automatica
 
 First, call the ```setAPConfig``` function from the package to set the name and password for the access point created by the board, then call the function ```tryConnectWifi``` to try to connect to the configured network. This call is needed to run the AP if there are no configured credentials and is used in subsequent runs to try to connect to the configured network. You can use the ```isWiFiReady``` function to check if the board's connection is ready in your loop function.
 
-https://github.com/davirxavier/esp-config-page/blob/e1c0983d408ee44f1dff3c726b4f5daed17c35ec/examples/wifi-autoconnect.cpp#L1-L34
+````c++
+#include <Arduino.h>
+#include "esp-config-page.h"
+
+// Webserver instance
+WebServer server(80);
+
+void setup() {
+    Serial.begin(115200);
+    delay(2500);
+    Serial.println("Started.");
+
+    // Set AP SSID and password for when the board can't connect to your network
+    ESP_CONFIG_PAGE::setAPConfig("ESP32-TEST", "drx13246");
+
+    // Try to reconnect automatically if you already configured your board
+    ESP_CONFIG_PAGE::tryConnectWifi(false);
+
+    // Setup webpage function
+    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST");
+
+    // Begin webserver
+    server.begin();
+    Serial.println("Setup complete.");
+}
+
+void loop() {
+    // Call update every loop
+    server.handleClient();
+    ESP_CONFIG_PAGE::loop();
+
+    if (ESP_CONFIG_PAGE::isWiFiReady()) {
+        // Connection is ready
+    }
+}
+````
 
 ### To be finished...
