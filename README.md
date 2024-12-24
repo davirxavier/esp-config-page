@@ -17,7 +17,7 @@ Include the lib package with ```#include "esp-config-page.h"```. Create a WebSer
 
 This will create a webpage containing a file browser and wireless network settings on the webserver instance that is passed to the setup function.
 
-https://github.com/davirxavier/esp-config-page/blob/ff86ded96d05f1b95f9293b2793273fb78927f96/examples/simple-usage.cpp
+https://github.com/davirxavier/esp-config-page/blob/ff86ded96d05f1b95f9293b2793273fb78927f96/examples/simple-usage.cpp#L1-L24
 
 ### Wireless Network Automatic Connection
 
@@ -25,6 +25,6 @@ This feature allows the board to try to connect to a wireless network automatica
 
 First, call the ```setAPConfig``` function from the package to set the name and password for the access point created by the board, then call the function ```tryConnectWifi``` to try to connect to the configured network. This call is needed to run the AP if there are no configured credentials and is used in subsequent runs to try to connect to the configured network. You can use the ```isWiFiReady``` function to check if the board's connection is ready in your loop function.
 
-CODE
+https://github.com/davirxavier/esp-config-page/blob/e1c0983d408ee44f1dff3c726b4f5daed17c35ec/examples/wifi-autoconnect.cpp#L1-L34
 
 ### To be finished...
