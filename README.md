@@ -11,6 +11,8 @@ Features:
 
 See the examples folder for concrete code examples.
 
+Access the config page in the url http://YOURBOARDIP/config. The default ip while in AP mode is 192.168.1.1.
+
 ### Basic Usage
 
 Include the lib package with ```#include "esp-config-page.h"```. Create a WebServer (ESP32) or ESP8266WebServer (ESP8266) instance, call setup function of the package, call begin on the webserver and call the loop function from this package every loop iteration. Code example:
