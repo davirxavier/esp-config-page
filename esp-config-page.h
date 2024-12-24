@@ -6,8 +6,16 @@
 #define DX_ESP_CONFIG_PAGE_H
 
 #include <Arduino.h>
-#include "ESP8266WebServer.h"
 #include "config-html.h"
+#include "LittleFS.h"
+
+#ifdef ESP32
+#include "WebServer.h"
+#include "Update.h"
+#elif
+#include "ESP8266WebServer.h"
+#endif
+
 #include "LittleFS.h"
 #include "WiFiUdp.h"
 
@@ -23,7 +31,44 @@
 #define LOGF(str, p...)
 #endif
 
+namespace newer_std {
+    template<class T> struct _Unique_if {
+        typedef std::unique_ptr<T> _Single_object;
+    };
+
+    template<class T> struct _Unique_if<T[]> {
+        typedef std::unique_ptr<T[]> _Unknown_bound;
+    };
+
+    template<class T, size_t N> struct _Unique_if<T[N]> {
+        typedef void _Known_bound;
+    };
+
+    template<class T, class... Args>
+    typename _Unique_if<T>::_Single_object
+    make_unique(Args&&... args) {
+        return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+    }
+
+    template<class T>
+    typename _Unique_if<T>::_Unknown_bound
+    make_unique(size_t n) {
+        typedef typename std::remove_extent<T>::type U;
+        return std::unique_ptr<T>(new U[n]());
+    }
+
+    template<class T, class... Args>
+    typename _Unique_if<T>::_Known_bound
+    make_unique(Args&&...) = delete;
+}
+
 namespace ESP_CONFIG_PAGE {
+
+#ifdef ESP32
+    using WEBSERVER_T = WebServer;
+#else
+    using WEBSERVER_T = ESP8266WebServer;
+#endif
 
     enum REQUEST_TYPE {
         CONFIG_PAGE,
@@ -56,7 +101,7 @@ namespace ESP_CONFIG_PAGE {
 
     struct CustomAction {
         const String key;
-        std::function<void(ESP8266WebServer &server)> handler;
+        std::function<void(WEBSERVER_T &server)> handler;
     };
 
     EnvVar **envVars;
@@ -193,7 +238,7 @@ namespace ESP_CONFIG_PAGE {
                 escaped = true;
             } else if (c == separator && !escaped) {
                 int newLen = i - lastIndex + 1;
-                ret[currentStr] = std::make_unique<char[]>(newLen);
+                ret[currentStr] = newer_std::make_unique<char[]>(newLen);
 
                 strncpy(ret[currentStr].get(), data + lastIndex, newLen-1);
                 ret[currentStr].get()[newLen-1] = '\0';
@@ -206,9 +251,8 @@ namespace ESP_CONFIG_PAGE {
         }
     }
 
-    void handleRequest(ESP8266WebServer &server, String username, String password, REQUEST_TYPE reqType);
-
-    bool handleLogin(ESP8266WebServer &server, String username, String password);
+    void handleRequest(WEBSERVER_T &server, String username, String password, REQUEST_TYPE reqType);
+    bool handleLogin(WEBSERVER_T &server, String username, String password);
 
     /**
      * @param server
@@ -216,9 +260,21 @@ namespace ESP_CONFIG_PAGE {
      * @param password
      * @param nodeName - DOT NOT USE THE CHARACTERS ":", ";" or "+"
      */
-    void setup(ESP8266WebServer &server, String username, String password, String nodeName) {
+    void setup(WEBSERVER_T &server, String username, String password, String nodeName) {
         LOGN("Entered config page setup.");
+
+#ifdef ESP32
+        if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+            Serial.println("Failed to mount LittleFS");
+            if (!LittleFS.begin(true /* true: format */)) {
+                Serial.println("Failed to format LittleFS");
+            } else {
+                Serial.println("LittleFS formatted successfully");
+            }
+        }
+#else
         LittleFS.begin();
+#endif
 
         customActionsCount = 0;
         maxCustomActions = 0;
@@ -284,7 +340,18 @@ namespace ESP_CONFIG_PAGE {
 
         if (envVarStorage != NULL) {
             LOGN("Env var storage is set, configuring env vars.");
+#ifdef ESP32
+            if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+                LOGN("Failed to mount LittleFS");
+                if (!LittleFS.begin(true /* true: format */)) {
+                    LOGN("Failed to format LittleFS");
+                } else {
+                    LOGN("LittleFS formatted successfully");
+                }
+            }
+#else
             LittleFS.begin();
+#endif
 
             uint8_t count = envVarStorage->countVars();
             LOGF("Found %d env vars\n", count);
@@ -326,7 +393,7 @@ namespace ESP_CONFIG_PAGE {
         envVarCount++;
     }
 
-    void addCustomAction(String key, std::function<void(ESP8266WebServer &server)> handler) {
+    void addCustomAction(String key, std::function<void(WEBSERVER_T &server)> handler) {
         LOGF("Adding action %s.\n", key.c_str());
         if (customActionsCount + 1 > maxCustomActions) {
             maxCustomActions = maxCustomActions == 0 ? 1 : ceil(maxCustomActions * 1.5);
@@ -338,20 +405,37 @@ namespace ESP_CONFIG_PAGE {
         customActionsCount++;
     }
 
-    void ota(ESP8266WebServer &server, String username, String password, REQUEST_TYPE reqType) {
+    const char* getUpdateErrorStr() {
+#ifdef ESP32
+        return Update.errorString();
+#else
+        return Update.getErrorString();
+#endif
+    }
+
+    void ota(WEBSERVER_T &server, String username, String password, REQUEST_TYPE reqType) {
         LOGN("OTA upload receiving, starting update process.");
 
         HTTPUpload& upload = server.upload();
         int command = U_FLASH;
         if (reqType == OTA_WRITE_FILESYSTEM) {
             LOGN("OTA update set to FILESYSTEM mode.");
+#ifdef ESP32
+            command = U_SPIFFS;
+#else
             command = U_FS;
+#endif
         }
 
         if (upload.status == UPLOAD_FILE_START) {
             LOGN("Starting OTA update.");
+#ifdef ESP8266
             WiFiUDP::stopAll();
+#endif
 
+#ifdef ESP32
+            uint32_t maxSpace = UPDATE_SIZE_UNKNOWN;
+#else
             uint32_t maxSpace = 0;
             if (command == U_FLASH) {
                 maxSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
@@ -359,19 +443,20 @@ namespace ESP_CONFIG_PAGE {
                 maxSpace = FS_end - FS_start;
             }
 
-            LOGF("Calculate max space is %d.\n", maxSpace);
-
             Update.runAsync(true);
+#endif
+
+            LOGF("Calculate max space is %d.\n", maxSpace);
             if (!Update.begin(maxSpace, command)) {  // start with max available size
                 LOGN("Error when starting update.");
-                server.send(400, "text/plain", Update.getErrorString());
+                server.send(400, "text/plain", getUpdateErrorStr());
             }
 
         } else if (upload.status == UPLOAD_FILE_WRITE) {
             LOGN("Update write.");
             if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
                 LOGN("Error when writing update.");
-                server.send(400, "text/plain", Update.getErrorString());
+                server.send(400, "text/plain", getUpdateErrorStr());
             }
         } else if (upload.status == UPLOAD_FILE_END) {
             LOGN("Update ended.");
@@ -379,7 +464,7 @@ namespace ESP_CONFIG_PAGE {
                 server.send(200);
             } else {
                 LOGN("Error finishing update.");
-                server.send(400, "text/plain", Update.getErrorString());
+                server.send(400, "text/plain", getUpdateErrorStr());
             }
         }
         yield();
@@ -431,7 +516,7 @@ namespace ESP_CONFIG_PAGE {
         WiFi.softAPConfig(apIp, apIp, IPAddress(255, 255, 255, 0));
     }
 
-    inline void handleRequest(ESP8266WebServer &server, String username, String password, REQUEST_TYPE reqType) {
+    inline void handleRequest(WEBSERVER_T &server, String username, String password, REQUEST_TYPE reqType) {
         LOGF("Received request of type %d.\n", reqType);
 
         if (!server.authenticate(username.c_str(), password.c_str())) {
@@ -454,10 +539,22 @@ namespace ESP_CONFIG_PAGE {
 
                 String ret;
 
+#ifdef ESP32
+                File file = LittleFS.open(path);
+                File nextFile;
+                while (file.isDirectory() && (nextFile = file.openNextFile())) {
+                    ret += String(nextFile.name()) + ":" + (file.isDirectory() ? "true" : "false") + ":" + file.size() + ";";
+
+                    if (nextFile) {
+                        nextFile.close();
+                    }
+                }
+#else
                 Dir dir = LittleFS.openDir(path);
                 while (dir.next()) {
                     ret += dir.fileName() + ":" + (dir.isDirectory() ? "true" : "false") + ":" + dir.fileSize() + ";";
                 }
+#endif
 
                 server.send(200, "text/plain", ret);
                 break;
@@ -568,7 +665,12 @@ namespace ESP_CONFIG_PAGE {
 
                 server.send(200);
                 delay(100);
+
+#ifdef ESP32
+                ESP.restart();
+#else
                 ESP.reset();
+#endif
                 break;
             }
             case OTA_END: {
@@ -587,10 +689,15 @@ namespace ESP_CONFIG_PAGE {
                 break;
             }
             case INFO: {
+#ifdef ESP32
+                String usedBytes = String(LittleFS.usedBytes());
+                String totalBytes = String(LittleFS.totalBytes());
+#else
                 FSInfo fsInfo;
                 LittleFS.info(fsInfo);
                 String usedBytes = String(fsInfo.usedBytes);
                 String totalBytes = String(fsInfo.totalBytes);
+#endif
                 String freeHeap = String(ESP.getFreeHeap());
 
                 int nameLen = name.length();
@@ -652,7 +759,11 @@ namespace ESP_CONFIG_PAGE {
                 char ssids[count][33];
                 if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1) {
                     for (int i = 0; i < count; i++) {
+#ifdef ESP32
+                        const wifi_ap_record_t *it = reinterpret_cast<wifi_ap_record_t*>(WiFi.getScanInfoByIndex(i));
+#else
                         const bss_info *it = WiFi.getScanInfoByIndex(i);
+#endif
 
                         if(!it) {
                             ssids[i][0] = '\0';
@@ -768,7 +879,11 @@ namespace ESP_CONFIG_PAGE {
             }
 
             File file = LittleFS.open(filePath, "w");
+#ifdef ESP32
+            file.print(buf);
+#else
             file.write(buf);
+#endif
             file.close();
         }
 
