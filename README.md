@@ -17,7 +17,7 @@ Include the lib package with ```#include "esp-config-page.h"```. Create a WebSer
 
 This will create a webpage containing a file browser and wireless network settings on the webserver instance that is passed to the setup function.
 
-[simple-usage.cpp](https://github.com/davirxavier/esp-config-page/blob/ff86ded96d05f1b95f9293b2793273fb78927f96/examples/simple-usage.cpp)
+https://github.com/davirxavier/esp-config-page/blob/ff86ded96d05f1b95f9293b2793273fb78927f96/examples/simple-usage.cpp
 
 ### Wireless Network Automatic Connection
 
