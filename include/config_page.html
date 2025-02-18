@@ -222,10 +222,10 @@
 <div id="modules">
     <p class="title-text" id="module-title" style="margin-top: 2rem; margin-bottom: 1.0rem;"></p>
 
-    <div class="cont med screen-panel" id="ota-panel">
+    <div class="cont med screen-panel flex-center">
         <span class="loader" id="ota-loader" style="display: none;"></span>
 
-        <div class="flex-center">
+        <div class="flex-center" id="ota-panel">
             <button id="ota-upload-file-btn" class="flex-center" style="font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
                 <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
                 <span style="margin-left: 0.5rem">Upload file</span>
@@ -235,10 +235,10 @@
         <input style="display: none" id="ota-file-input" type='file' name='update' onchange="onOtaUpload(true)" accept=".bin,.bin.gz">
     </div>
 
-    <div class="cont med screen-panel" id="ota-panel-f">
+    <div class="cont med screen-panel flex-center">
         <span class="loader" id="ota-loader-f" style="display: none;"></span>
 
-        <div class="flex-center">
+        <div class="flex-center" id="ota-panel-f">
             <button id="ota-upload-file-btn-f" class="flex-center" style="font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
                 <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
                 <span style="margin-left: 0.5rem">Upload file</span>
@@ -272,16 +272,18 @@
         </div>
     </div>
 
-    <div id="custom-actions-div" style="width: 300px; margin: 2rem auto 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1rem;">
+    <div id="custom-actions-div" class="flex-center" style="width: 300px; margin: 2rem auto 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1rem;">
     </div>
 
-    <div class="cont med">
+    <div class="cont med" id="env-div">
         <div id="env-container" class="cont med flex-center">
         </div>
 
         <button class="small-btn flex-center" onclick="save()" style="margin-top: 2rem; width: fit-content; margin-left: auto; margin-right: auto">Save</button>
         <label style="margin: 0 auto 0 auto" id="status"></label>
     </div>
+
+    <p class="title-text" id="message" style="margin-top: 2rem; margin-bottom: 1.0rem; font-size: 0.93rem"></p>
 </div>
 
 <div class="cont med" style="align-items: center; gap: unset">
@@ -552,7 +554,7 @@
             const file = input.files[0];
 
             if (file) {
-                otaPanel.style.display = 'unset';
+                otaPanel.style.display = 'none';
                 document.getElementById(parseName('ota-upload-file-btn')).style.display = 'none';
 
                 otaLoader.style.display = 'unset';
@@ -688,18 +690,6 @@
                     button.onclick = () => customAction(ca);
                     button.innerText = ca;
                     caCont.appendChild(button);
-                }
-
-                if (envSplit.length === 0) {
-                    document.getElementById('env-div').style.display = 'none';
-                }
-
-                if (caSplit.length === 0) {
-                    document.getElementById('custom-actions-div').style.display = 'none';
-                }
-
-                if (envSplit.length === 0 && caSplit.length === 0) {
-                    document.getElementById('settings-panel').style.display = 'none';
                 }
 
                 if (hasWifi === '0') {
@@ -857,6 +847,7 @@
     const moduleSel = document.getElementById('module-selector');
     const moduleTitle = document.getElementById('module-title');
     const moduleSelSpan = document.createElement('span');
+    const messageModule = document.getElementById('message');
 
     const moduleTypes = {
         OTA_FIRMWARE: {
@@ -882,12 +873,27 @@
         CUSTOM_ACTIONS: {
             name: 'Actions',
             title: 'TRIGGER ACTIONS',
-            onChange: () => {},
+            onChange: () => {
+                if (document.getElementById('custom-actions-div').childElementCount === 0) {
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No actions defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
+            },
         },
         ENV_VARS: {
-            name: 'Environment Variables',
+            name: 'Environment',
             title: 'CONFIGURE ENVIRONMENT VARIABLES',
-            onChange: () => {}
+            onChange: () => {
+                if (document.getElementById('env-container').childElementCount === 0) {
+                    document.getElementById('env-div').style.display = 'none';
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No environment variables are defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
+            }
         }
     };
     const loadedModules = [moduleTypes.OTA_FIRMWARE, moduleTypes.OTA_FILESYSTEM, moduleTypes.WIRELESS, moduleTypes.FILE_BROWSER, moduleTypes.CUSTOM_ACTIONS, moduleTypes.ENV_VARS];
@@ -906,7 +912,7 @@
             module.style.display = 'none';
         }
 
-        moduleContainer.children.item(i+1).style.display = 'unset';
+        moduleContainer.children.item(i+1).style.removeProperty('display');
 
         if (!ignoreEvent && m.onChange) {
             m.onChange(m, i, span);
