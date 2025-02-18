@@ -206,82 +206,83 @@
             transition: all 0.15s linear;
         }
 
+        .flex-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
     </style>
 </head>
 <body style="background-color: #212121; color: #CFD8DC; font-family: sans-serif; overflow: auto">
 
-<div id="ota-panel" class="screen-panel">
-    <p class="title-text" style="margin-top: 2rem; margin-bottom: -1rem">OTA UPDATE</p>
+<div id="module-selector" class="toggle noselect cont med" style="flex-direction: row; width: fit-content">
+</div>
 
-    <div id="ota-start-div" class="cont med" style="align-items: center">
+<div id="modules">
+    <p class="title-text" id="module-title" style="margin-top: 2rem; margin-bottom: 1.0rem;"></p>
+
+    <div class="cont med screen-panel" id="ota-panel">
         <span class="loader" id="ota-loader" style="display: none;"></span>
 
-        <div id="select-toggle" class="toggle noselect">
-            <span onclick="changeUploadMode(this, true)">Firmware</span>
-            <span onclick="changeUploadMode(this, false)">Filesystem</span>
-            <span class="select">Firmware</span>
+        <div class="flex-center">
+            <button id="ota-upload-file-btn" class="flex-center" style="font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
+                <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
+                <span style="margin-left: 0.5rem">Upload file</span>
+            </button>
         </div>
-
-        <button id="ota-upload-file-btn" style="display: flex; align-items: center; justify-content: center; font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
-            <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
-            <span style="margin-left: 0.5rem">Upload file</span>
-        </button>
 
         <input style="display: none" id="ota-file-input" type='file' name='update' onchange="onOtaUpload(true)" accept=".bin,.bin.gz">
     </div>
-</div>
 
-<div id="settings-panel" class="screen-panel">
-    <div class="cont med"><hr style="width: 100%;"></div>
+    <div class="cont med screen-panel" id="ota-panel-f">
+        <span class="loader" id="ota-loader-f" style="display: none;"></span>
 
-    <p class="title-text" style="margin-top: 2rem;">SETTINGS</p>
+        <div class="flex-center">
+            <button id="ota-upload-file-btn-f" class="flex-center" style="font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
+                <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
+                <span style="margin-left: 0.5rem">Upload file</span>
+            </button>
+        </div>
+
+        <input style="display: none" id="ota-file-input-f" type='file' name='update' onchange="onOtaUpload(true)" accept=".bin,.bin.gz">
+    </div>
+
+    <div id="wifi-config-cont" class="cont med screen-panel">
+        <div class="flex-center">
+            <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Refresh</button>
+        </div>
+
+        <div class="flex-center" style="margin-top: 1rem;">
+            <p id="wifi-status-text" class="title-text" style="margin: 0;"></p>
+        </div>
+
+        <span class="loader-animated" id="wifi-loader" style="margin: 1.5rem auto 0 auto; width: 20%; height: 8px;"></span>
+        <div id="wifi-list" class="cont med" style="margin: 1rem auto -1rem auto; gap: 0;">
+        </div>
+    </div>
+
+    <div class="cont med screen-panel" id="file-nav">
+        <div style="display: flex; align-items: center; justify-content: center;">
+            <button class="icon-btn" title="Go back" onclick="goBack(); return false;" style="width: 24px; height: 24px;">..</button>
+            <button id="current-path-text" class="title-text" style="margin: 0 0 0 0.5rem; padding: 0.5rem;"></button>
+        </div>
+
+        <div id="files-container" class="cont med cont-files" style="margin: 0.5rem auto -1rem auto; gap: 0;">
+        </div>
+    </div>
 
     <div id="custom-actions-div" style="width: 300px; margin: 2rem auto 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1rem;">
     </div>
 
-    <div id="env-div" class="cont med">
-        <hr style="width: 100%;">
-
-        <p class="title-text" style="margin-top: 0">ENVIRONMENT VARIABLES</p>
-
-        <div id="env-container" class="cont med">
+    <div class="cont med">
+        <div id="env-container" class="cont med flex-center">
         </div>
 
-        <button onclick="save()" style="margin-top: 2rem; width: fit-content; margin-left: auto; margin-right: auto">Save</button>
-
+        <button class="small-btn flex-center" onclick="save()" style="margin-top: 2rem; width: fit-content; margin-left: auto; margin-right: auto">Save</button>
         <label style="margin: 0 auto 0 auto" id="status"></label>
     </div>
 </div>
-
-<div id="file-nav" class="cont med screen-panel">
-    <div style="display: flex; align-items: center; justify-content: center; margin-top: 2rem;">
-        <p class="title-text" style="margin: 0 0 1.2rem 0">FILE NAVIGATION</p>
-    </div>
-
-    <div style="display: flex; align-items: center; justify-content: center;">
-        <button class="icon-btn" title="Go back" onclick="goBack(); return false;" style="width: 24px; height: 24px;">..</button>
-        <button id="current-path-text" class="title-text" style="margin: 0 0 0 0.5rem; padding: 0.5rem;"></button>
-    </div>
-
-    <div id="files-container" class="cont med cont-files" style="margin: 0.5rem auto -1rem auto; gap: 0;">
-    </div>
-</div>
-
-<div id="wifi-config-cont" class="cont med screen-panel">
-    <div style="display: flex; align-items: center; justify-content: center; margin-top: 2rem;">
-        <p class="title-text" style="margin: 0; padding-right: 1rem">WIRELESS CONNECTION</p>
-        <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Refresh</button>
-    </div>
-
-    <div style="display: flex; align-items: center; justify-content: center; margin-top: 1rem;">
-        <p id="wifi-status-text" class="title-text" style="margin: 0;"></p>
-    </div>
-
-    <span class="loader-animated" id="wifi-loader" style="margin: 1.5rem auto 0 auto; width: 20%; height: 8px;"></span>
-    <div id="wifi-list" class="cont med" style="margin: 1rem auto -1rem auto; gap: 0;">
-    </div>
-</div>
-
 
 <div class="cont med" style="align-items: center; gap: unset">
     <hr style="width: 100%">
@@ -289,9 +290,6 @@
     <p class="title-text" style="margin-bottom: -0.1rem;">MAC ADDRESS: <span id="text-mac" style="font-weight: bold"></span></p>
     <p class="title-text" style="margin-bottom: -0.1rem;">FREE SPACE: <span id="text-space-free" style="font-weight: bold"></span> bytes / <span id="text-space-total" style="font-weight: bold"></span> bytes</p>
     <p class="title-text">FREE HEAP: <span id="text-ram" style="font-weight: bold"></span> bytes</p>
-    <button id="browser-btn" class="small-btn" style="margin-top: 0.5rem">File browser</button>
-    <button id="settings-btn" class="small-btn" style="margin-top: 0.5rem">Settings</button>
-    <button id="wifi-btn" class="small-btn" style="margin-top: 0.5rem">Wireless Connection</button>
 </div>
 
 <button id="delete-svg" class="icon-btn" title="Delete file">
@@ -326,10 +324,6 @@
     let currentBrowserPath = '/';
 
     const filesContainer = document.getElementById('files-container');
-    const fileNavDiv = document.getElementById('file-nav');
-    const settingsDiv = document.getElementById('settings-panel');
-    const otaPanel = document.getElementById('ota-panel');
-    fileNavDiv.style.display = 'none';
 
     const deleteSvg = document.getElementById('delete-svg');
     deleteSvg.style.display = 'none';
@@ -345,57 +339,6 @@
 
     const currentPathText = document.getElementById('current-path-text');
     currentPathText.innerText = currentBrowserPath;
-
-    const otaLoader = document.getElementById('ota-loader');
-
-    const divElements = document.querySelectorAll('.screen-panel');
-    divElements.forEach(d => d.style.display = 'none');
-
-    let currentMode = 0;
-    const modeButtons = [
-        {
-            btn: document.getElementById('settings-btn'),
-            divToShow: settingsDiv,
-        },
-        {
-            btn: document.getElementById('browser-btn'),
-            divToShow: fileNavDiv,
-            onChange: () => updateFiles()
-        },
-        {
-            btn: document.getElementById('wifi-btn'),
-            divToShow: document.getElementById('wifi-config-cont'),
-            onChange: () => getWifiSettings()
-        }
-    ];
-    modeButtons.forEach((b, i) => b.btn.onclick = () => changeMode(i));
-
-    function changeMode(index) {
-        const btnObj = modeButtons[index];
-
-        for (const btn of modeButtons) {
-            btn.btn.style.display = 'unset';
-        }
-
-        for (const div of divElements) {
-            div.style.display = 'none';
-        }
-
-        btnObj.btn.style.display = 'none';
-        btnObj.divToShow.style.display = 'unset';
-        currentMode = index;
-
-        if (currentMode == 0) {
-            otaPanel.style.display = 'unset';
-        }
-
-        if (btnObj.onChange) {
-            btnObj.onChange();
-        }
-    }
-    setTimeout(() => {
-        changeMode(currentMode);
-    }, 100);
 
     function unescapeStr(str) {
         return str ? str.replaceAll('|:', ":").replaceAll('|;', ";").replaceAll("|+", "+") : "";
@@ -443,12 +386,6 @@
                 alert(success ? 'Environment saved successfully!' : `Error while saving: ${res}`);
                 location.reload();
             });
-        }
-    }
-
-    function resetWireless() {
-        if (confirm('Reset all wireless settings?')) {
-            doRequest('reset', '', "POST");
         }
     }
 
@@ -583,14 +520,12 @@
         xhr.responseType = 'blob';
 
         xhr.onload = (e) => {
-            var blob = e.currentTarget.response;
-            var contentDispo = e.currentTarget.getResponseHeader('Content-Disposition');
-            var file = window.URL.createObjectURL(blob);
+            const blob = e.currentTarget.response;
+            const contentDispo = e.currentTarget.getResponseHeader('Content-Disposition');
 
-            var link = document.createElement("a"); // Or maybe get it from the current document
+            const link = document.createElement("a"); // Or maybe get it from the current document
             link.target = '_blank';
-            const url = URL.createObjectURL(blob);
-            link.href = url;
+            link.href = URL.createObjectURL(blob);
             link.download = contentDispo;
             link.click();
         };
@@ -607,20 +542,20 @@
     }
 
     function onOtaUpload(hasFile) {
-        const input = document.getElementById('ota-file-input');
-        const btn = document.getElementById('ota-submit');
+        const parseName = (name) => name + (isUploadFirmware ? '' : '-f');
+
+        const input = document.getElementById(parseName('ota-file-input'));
+        const otaPanel = document.getElementById(parseName('ota-panel'));
+        const otaLoader = document.getElementById(parseName('ota-loader'));
 
         if (hasFile) {
             const file = input.files[0];
 
             if (file) {
-                divElements.forEach(d => d.style.display = 'none');
-                modeButtons.forEach(b => b.btn.style.display = 'none');
                 otaPanel.style.display = 'unset';
-                document.getElementById('ota-upload-file-btn').style.display = 'none';
-                document.getElementById('select-toggle').style.display = 'none';
-                otaLoader.style.display = 'unset';
+                document.getElementById(parseName('ota-upload-file-btn')).style.display = 'none';
 
+                otaLoader.style.display = 'unset';
                 otaLoader.style.width = 0 + '%';
 
                 const formData = new FormData();
@@ -681,17 +616,6 @@
         input.value = null;
         input.click();
     }
-
-    function changeUploadMode(clickedElement, isFirmware) {
-        isUploadFirmware = isFirmware;
-
-        const toggleDiv = document.getElementById('select-toggle');
-        const selectElement = toggleDiv.querySelector('.select');
-        selectElement.style.left = (clickedElement.offsetLeft === 0 ? 6 : clickedElement.offsetLeft) + 'px';
-        selectElement.innerText = clickedElement.innerText;
-    }
-
-    changeUploadMode(document.getElementById('select-toggle').children[0], true);
 
     function updateInfo() {
         doRequest('info', undefined, 'GET', (success, response) => {
@@ -779,7 +703,7 @@
                 }
 
                 if (hasWifi === '0') {
-                    setTimeout(() => changeMode(2), 100);
+                    // setTimeout(() => changeMode(2), 100); FIXME
                 }
             } else {
                 alert('Error while trying to fetch info from controller.')
@@ -927,6 +851,77 @@
             });
         });
     }
+
+    let currentModule = 0;
+    const moduleContainer = document.getElementById('modules');
+    const moduleSel = document.getElementById('module-selector');
+    const moduleTitle = document.getElementById('module-title');
+    const moduleSelSpan = document.createElement('span');
+
+    const moduleTypes = {
+        OTA_FIRMWARE: {
+            name: 'OTA Firmware',
+            title: 'UPDATE FIRMWARE',
+            onChange: () => {}
+        },
+        OTA_FILESYSTEM: {
+            name: 'OTA Filesystem',
+            title: 'UPDATE FILESYSTEM',
+            onChange: () => {}
+        },
+        WIRELESS: {
+            name: 'Wireless',
+            title: 'WIRELESS SETTINGS',
+            onChange: () => getWifiSettings()
+        },
+        FILE_BROWSER: {
+            name: 'File Browser',
+            title: 'FILE BROWSER',
+            onChange: () => {}
+        },
+        CUSTOM_ACTIONS: {
+            name: 'Actions',
+            title: 'TRIGGER ACTIONS',
+            onChange: () => {},
+        },
+        ENV_VARS: {
+            name: 'Environment Variables',
+            title: 'CONFIGURE ENVIRONMENT VARIABLES',
+            onChange: () => {}
+        }
+    };
+    const loadedModules = [moduleTypes.OTA_FIRMWARE, moduleTypes.OTA_FILESYSTEM, moduleTypes.WIRELESS, moduleTypes.FILE_BROWSER, moduleTypes.CUSTOM_ACTIONS, moduleTypes.ENV_VARS];
+    moduleSelSpan.innerText = loadedModules[0].name;
+    moduleSelSpan.classList.add('select');
+    moduleSel.appendChild(moduleSelSpan);
+
+    function changeModule(m, i, span, ignoreEvent) {
+        moduleSelSpan.style.left = (span.offsetLeft === 0 ? 6 : span.offsetLeft) + 'px';
+        moduleSelSpan.innerText = span.innerText;
+        currentModule = i;
+        moduleTitle.innerText = m.title;
+
+        for (let j = 1; j < moduleContainer.children.length; j++) {
+            const module = moduleContainer.children.item(j);
+            module.style.display = 'none';
+        }
+
+        moduleContainer.children.item(i+1).style.display = 'unset';
+
+        if (!ignoreEvent && m.onChange) {
+            m.onChange(m, i, span);
+        }
+    }
+
+    loadedModules.forEach((m, i) => {
+        const span = document.createElement('span');
+        span.innerText = m.name;
+        span.title = m.title;
+        span.addEventListener('click', () => changeModule(m, i, span));
+        moduleSel.appendChild(span);
+    });
+
+    changeModule(loadedModules[0], 0, moduleSel.children.item(0));
 </script>
 </body>
 </html>
