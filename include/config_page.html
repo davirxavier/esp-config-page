@@ -206,82 +206,93 @@
             transition: all 0.15s linear;
         }
 
+        .flex-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
     </style>
 </head>
 <body style="background-color: #212121; color: #CFD8DC; font-family: sans-serif; overflow: auto">
 
-<div id="ota-panel" class="screen-panel">
-    <p class="title-text" style="margin-top: 2rem; margin-bottom: -1rem">OTA UPDATE</p>
+<div id="module-selector" class="toggle noselect cont med" style="flex-direction: row; width: fit-content">
+</div>
 
-    <div id="ota-start-div" class="cont med" style="align-items: center">
+<div id="modules">
+    <p class="title-text" id="module-title" style="margin-top: 2rem; margin-bottom: 1.0rem;"></p>
+
+    <!--MARKER-OTA-->
+    <div class="cont med screen-panel flex-center">
         <span class="loader" id="ota-loader" style="display: none;"></span>
 
-        <div id="select-toggle" class="toggle noselect">
-            <span onclick="changeUploadMode(this, true)">Firmware</span>
-            <span onclick="changeUploadMode(this, false)">Filesystem</span>
-            <span class="select">Firmware</span>
+        <div class="flex-center" id="ota-panel">
+            <button id="ota-upload-file-btn" class="flex-center" style="font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
+                <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
+                <span style="margin-left: 0.5rem">Upload file</span>
+            </button>
         </div>
-
-        <button id="ota-upload-file-btn" style="display: flex; align-items: center; justify-content: center; font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
-            <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
-            <span style="margin-left: 0.5rem">Upload file</span>
-        </button>
 
         <input style="display: none" id="ota-file-input" type='file' name='update' onchange="onOtaUpload(true)" accept=".bin,.bin.gz">
     </div>
-</div>
 
-<div id="settings-panel" class="screen-panel">
-    <div class="cont med"><hr style="width: 100%;"></div>
+    <div class="cont med screen-panel flex-center">
+        <span class="loader" id="ota-loader-f" style="display: none;"></span>
 
-    <p class="title-text" style="margin-top: 2rem;">SETTINGS</p>
-
-    <div id="custom-actions-div" style="width: 300px; margin: 2rem auto 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1rem;">
-    </div>
-
-    <div id="env-div" class="cont med">
-        <hr style="width: 100%;">
-
-        <p class="title-text" style="margin-top: 0">ENVIRONMENT VARIABLES</p>
-
-        <div id="env-container" class="cont med">
+        <div class="flex-center" id="ota-panel-f">
+            <button id="ota-upload-file-btn-f" class="flex-center" style="font-size: 0.9em; padding: 0.8em" onclick="onOtaUpload()">
+                <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e8eaed"><path d="M440-200h80v-167l64 64 56-57-160-160-160 160 57 56 63-63v167ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z"/></svg>
+                <span style="margin-left: 0.5rem">Upload file</span>
+            </button>
         </div>
 
-        <button onclick="save()" style="margin-top: 2rem; width: fit-content; margin-left: auto; margin-right: auto">Save</button>
+        <input style="display: none" id="ota-file-input-f" type='file' name='update' onchange="onOtaUpload(true)" accept=".bin,.bin.gz">
+    </div>
+    <!--END-OTA-->
 
+    <!--MARKER-WIRELESS-->
+    <div id="wifi-config-cont" class="cont med screen-panel">
+        <div class="flex-center">
+            <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Refresh</button>
+        </div>
+
+        <div class="flex-center" style="margin-top: 1rem;">
+            <p id="wifi-status-text" class="title-text" style="margin: 0;"></p>
+        </div>
+
+        <span class="loader-animated" id="wifi-loader" style="margin: 1.5rem auto 0 auto; width: 20%; height: 8px;"></span>
+        <div id="wifi-list" class="cont med" style="margin: 1rem auto -1rem auto; gap: 0;">
+        </div>
+    </div>
+    <!--END-WIRELESS-->
+
+    <div class="cont med screen-panel" id="file-nav">
+        <div style="display: flex; align-items: center; justify-content: center;">
+            <button class="icon-btn" title="Go back" onclick="goBack(); return false;" style="width: 24px; height: 24px;">..</button>
+            <button id="current-path-text" class="title-text" style="margin: 0 0 0 0.5rem; padding: 0.5rem;"></button>
+        </div>
+
+        <div id="files-container" class="cont med cont-files" style="margin: 0.5rem auto -1rem auto; gap: 0;">
+        </div>
+    </div>
+
+    <!--MARKER-CA-->
+    <div id="custom-actions-div" class="flex-center" style="width: 300px; margin: 2rem auto 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1rem;">
+    </div>
+    <!--END-CA-->
+
+    <!--MARKER-ENV-->
+    <div class="cont med" id="env-div">
+        <div id="env-container" class="cont med flex-center">
+        </div>
+
+        <button class="small-btn flex-center" onclick="save()" style="margin-top: 2rem; width: fit-content; margin-left: auto; margin-right: auto">Save</button>
         <label style="margin: 0 auto 0 auto" id="status"></label>
     </div>
+    <!--END-ENV-->
+
+    <p class="title-text" id="message" style="margin-top: 2rem; margin-bottom: 1.0rem; font-size: 0.93rem"></p>
 </div>
-
-<div id="file-nav" class="cont med screen-panel">
-    <div style="display: flex; align-items: center; justify-content: center; margin-top: 2rem;">
-        <p class="title-text" style="margin: 0 0 1.2rem 0">FILE NAVIGATION</p>
-    </div>
-
-    <div style="display: flex; align-items: center; justify-content: center;">
-        <button class="icon-btn" title="Go back" onclick="goBack(); return false;" style="width: 24px; height: 24px;">..</button>
-        <button id="current-path-text" class="title-text" style="margin: 0 0 0 0.5rem; padding: 0.5rem;"></button>
-    </div>
-
-    <div id="files-container" class="cont med cont-files" style="margin: 0.5rem auto -1rem auto; gap: 0;">
-    </div>
-</div>
-
-<div id="wifi-config-cont" class="cont med screen-panel">
-    <div style="display: flex; align-items: center; justify-content: center; margin-top: 2rem;">
-        <p class="title-text" style="margin: 0; padding-right: 1rem">WIRELESS CONNECTION</p>
-        <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Refresh</button>
-    </div>
-
-    <div style="display: flex; align-items: center; justify-content: center; margin-top: 1rem;">
-        <p id="wifi-status-text" class="title-text" style="margin: 0;"></p>
-    </div>
-
-    <span class="loader-animated" id="wifi-loader" style="margin: 1.5rem auto 0 auto; width: 20%; height: 8px;"></span>
-    <div id="wifi-list" class="cont med" style="margin: 1rem auto -1rem auto; gap: 0;">
-    </div>
-</div>
-
 
 <div class="cont med" style="align-items: center; gap: unset">
     <hr style="width: 100%">
@@ -289,11 +300,9 @@
     <p class="title-text" style="margin-bottom: -0.1rem;">MAC ADDRESS: <span id="text-mac" style="font-weight: bold"></span></p>
     <p class="title-text" style="margin-bottom: -0.1rem;">FREE SPACE: <span id="text-space-free" style="font-weight: bold"></span> bytes / <span id="text-space-total" style="font-weight: bold"></span> bytes</p>
     <p class="title-text">FREE HEAP: <span id="text-ram" style="font-weight: bold"></span> bytes</p>
-    <button id="browser-btn" class="small-btn" style="margin-top: 0.5rem">File browser</button>
-    <button id="settings-btn" class="small-btn" style="margin-top: 0.5rem">Settings</button>
-    <button id="wifi-btn" class="small-btn" style="margin-top: 0.5rem">Wireless Connection</button>
 </div>
 
+<!--MARKER-FILES-->
 <button id="delete-svg" class="icon-btn" title="Delete file">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M280-120q-33 0-56-23t-24-57v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23 57t-57 23H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
 </button>
@@ -306,6 +315,9 @@
 <button id="folder-svg" class="icon-btn" style="margin-right: 0.5rem;" title="Open directory">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M160-160q-33 0-56-23t-24-57v-480q0-33 24-56t56-24h240l80 80h320q33 0 57 24t23 56H447l-80-80H160v480l96-320h684L837-217q-8 26-29 42t-48 15H160Zm84-80h516l72-240H316l-72 240Zm0 0 72-240-72 240Zm-84-400v-80 80Z"/></svg>
 </button>
+<!--END-FILES-->
+
+<!--MARKER-WIRELESS-->
 <button id="wifi-4-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q95-97 220-148t260-52q136 0 261 52t219 148L480-120Zm0-114 364-364q-79-60-172-91t-192-31q-99 0-192 31t-172 91l364 364Z"/></svg>
 </button>
@@ -321,16 +333,14 @@
 <button id="wifi-0-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q95-97 220-148t260-52q136 0 261 52t219 148L480-120Z"/></svg>
 </button>
+<!--END-WIRELESS-->
 <script>
     let isUploadFirmware = true;
     let currentBrowserPath = '/';
 
     const filesContainer = document.getElementById('files-container');
-    const fileNavDiv = document.getElementById('file-nav');
-    const settingsDiv = document.getElementById('settings-panel');
-    const otaPanel = document.getElementById('ota-panel');
-    fileNavDiv.style.display = 'none';
 
+    <!--MARKER-FILES-->
     const deleteSvg = document.getElementById('delete-svg');
     deleteSvg.style.display = 'none';
 
@@ -345,57 +355,7 @@
 
     const currentPathText = document.getElementById('current-path-text');
     currentPathText.innerText = currentBrowserPath;
-
-    const otaLoader = document.getElementById('ota-loader');
-
-    const divElements = document.querySelectorAll('.screen-panel');
-    divElements.forEach(d => d.style.display = 'none');
-
-    let currentMode = 0;
-    const modeButtons = [
-        {
-            btn: document.getElementById('settings-btn'),
-            divToShow: settingsDiv,
-        },
-        {
-            btn: document.getElementById('browser-btn'),
-            divToShow: fileNavDiv,
-            onChange: () => updateFiles()
-        },
-        {
-            btn: document.getElementById('wifi-btn'),
-            divToShow: document.getElementById('wifi-config-cont'),
-            onChange: () => getWifiSettings()
-        }
-    ];
-    modeButtons.forEach((b, i) => b.btn.onclick = () => changeMode(i));
-
-    function changeMode(index) {
-        const btnObj = modeButtons[index];
-
-        for (const btn of modeButtons) {
-            btn.btn.style.display = 'unset';
-        }
-
-        for (const div of divElements) {
-            div.style.display = 'none';
-        }
-
-        btnObj.btn.style.display = 'none';
-        btnObj.divToShow.style.display = 'unset';
-        currentMode = index;
-
-        if (currentMode == 0) {
-            otaPanel.style.display = 'unset';
-        }
-
-        if (btnObj.onChange) {
-            btnObj.onChange();
-        }
-    }
-    setTimeout(() => {
-        changeMode(currentMode);
-    }, 100);
+    <!--END-FILES-->
 
     function unescapeStr(str) {
         return str ? str.replaceAll('|:', ":").replaceAll('|;', ";").replaceAll("|+", "+") : "";
@@ -428,6 +388,7 @@
         return ret;
     }
 
+    <!--MARKER-ENV-->
     function save() {
         const arr = document.querySelectorAll('.env-input');
 
@@ -445,13 +406,9 @@
             });
         }
     }
+    <!--END-ENV-->
 
-    function resetWireless() {
-        if (confirm('Reset all wireless settings?')) {
-            doRequest('reset', '', "POST");
-        }
-    }
-
+    <!--MARKER-CA-->
     function customAction(eventId) {
         if (confirm('Do action: ' + eventId + ' ?')) {
             doRequest('customa', eventId, "POST", (success) => {
@@ -462,6 +419,7 @@
             });
         }
     }
+    <!--END-CA-->
 
     function doRequest(uri, data, method, cb) {
         var xhr = new XMLHttpRequest();
@@ -479,6 +437,7 @@
         };
     }
 
+    <!--MARKER-FILES-->
     function updateFiles() {
         doRequest('files', currentBrowserPath, "POST", (success, response) => {
             if (success) {
@@ -583,14 +542,12 @@
         xhr.responseType = 'blob';
 
         xhr.onload = (e) => {
-            var blob = e.currentTarget.response;
-            var contentDispo = e.currentTarget.getResponseHeader('Content-Disposition');
-            var file = window.URL.createObjectURL(blob);
+            const blob = e.currentTarget.response;
+            const contentDispo = e.currentTarget.getResponseHeader('Content-Disposition');
 
-            var link = document.createElement("a"); // Or maybe get it from the current document
+            const link = document.createElement("a"); // Or maybe get it from the current document
             link.target = '_blank';
-            const url = URL.createObjectURL(blob);
-            link.href = url;
+            link.href = URL.createObjectURL(blob);
             link.download = contentDispo;
             link.click();
         };
@@ -605,22 +562,24 @@
             });
         }
     }
+    <!--END-FILES-->
 
+    <!--MARKER-OTA-->
     function onOtaUpload(hasFile) {
-        const input = document.getElementById('ota-file-input');
-        const btn = document.getElementById('ota-submit');
+        const parseName = (name) => name + (isUploadFirmware ? '' : '-f');
+
+        const input = document.getElementById(parseName('ota-file-input'));
+        const otaPanel = document.getElementById(parseName('ota-panel'));
+        const otaLoader = document.getElementById(parseName('ota-loader'));
 
         if (hasFile) {
             const file = input.files[0];
 
             if (file) {
-                divElements.forEach(d => d.style.display = 'none');
-                modeButtons.forEach(b => b.btn.style.display = 'none');
-                otaPanel.style.display = 'unset';
-                document.getElementById('ota-upload-file-btn').style.display = 'none';
-                document.getElementById('select-toggle').style.display = 'none';
-                otaLoader.style.display = 'unset';
+                otaPanel.style.display = 'none';
+                document.getElementById(parseName('ota-upload-file-btn')).style.display = 'none';
 
+                otaLoader.style.display = 'unset';
                 otaLoader.style.width = 0 + '%';
 
                 const formData = new FormData();
@@ -681,17 +640,7 @@
         input.value = null;
         input.click();
     }
-
-    function changeUploadMode(clickedElement, isFirmware) {
-        isUploadFirmware = isFirmware;
-
-        const toggleDiv = document.getElementById('select-toggle');
-        const selectElement = toggleDiv.querySelector('.select');
-        selectElement.style.left = (clickedElement.offsetLeft === 0 ? 6 : clickedElement.offsetLeft) + 'px';
-        selectElement.innerText = clickedElement.innerText;
-    }
-
-    changeUploadMode(document.getElementById('select-toggle').children[0], true);
+    <!--END-OTA-->
 
     function updateInfo() {
         doRequest('info', undefined, 'GET', (success, response) => {
@@ -713,6 +662,7 @@
                 document.getElementById('text-space-total').innerText = spaceTotal;
                 document.getElementById('text-ram').innerText = freeHeap;
 
+                <!--MARKER-ENV-->
                 const envCont = document.getElementById('env-container');
                 envCont.innerHTML = '';
 
@@ -747,7 +697,9 @@
 
                     envCont.appendChild(mainElement);
                 }
+                <!--END-ENV-->
 
+                <!--MARKER-CA-->
                 const caCont = document.getElementById('custom-actions-div');
                 caCont.innerHTML = '';
 
@@ -765,22 +717,7 @@
                     button.innerText = ca;
                     caCont.appendChild(button);
                 }
-
-                if (envSplit.length === 0) {
-                    document.getElementById('env-div').style.display = 'none';
-                }
-
-                if (caSplit.length === 0) {
-                    document.getElementById('custom-actions-div').style.display = 'none';
-                }
-
-                if (envSplit.length === 0 && caSplit.length === 0) {
-                    document.getElementById('settings-panel').style.display = 'none';
-                }
-
-                if (hasWifi === '0') {
-                    setTimeout(() => changeMode(2), 100);
-                }
+                <!--END-CA-->
             } else {
                 alert('Error while trying to fetch info from controller.')
             }
@@ -789,6 +726,7 @@
 
     updateInfo();
 
+    <!--MARKER-WIRELESS-->
     const WIFI_STATUS = {
         WL_IDLE_STATUS: 0,
         WL_NO_SSID_AVAIL: 1,
@@ -927,6 +865,121 @@
             });
         });
     }
+    <!--END-WIRELESS-->
+
+    let currentModule = 0;
+    const moduleContainer = document.getElementById('modules');
+    const moduleSel = document.getElementById('module-selector');
+    const moduleTitle = document.getElementById('module-title');
+    const moduleSelSpan = document.createElement('span');
+    const messageModule = document.getElementById('message');
+
+    const moduleTypes = {
+        OTA_FIRMWARE: {
+            name: 'OTA Firmware',
+            title: 'UPDATE FIRMWARE',
+            onChange: () => {}
+        },
+        OTA_FILESYSTEM: {
+            name: 'OTA Filesystem',
+            title: 'UPDATE FILESYSTEM',
+            onChange: () => {}
+        },
+        WIRELESS: {
+            name: 'Wireless',
+            title: 'WIRELESS SETTINGS',
+            onChange: () => getWifiSettings()
+        },
+        FILE_BROWSER: {
+            name: 'File Browser',
+            title: 'FILE BROWSER',
+            onChange: () => updateFiles()
+        },
+        CUSTOM_ACTIONS: {
+            name: 'Actions',
+            title: 'TRIGGER ACTIONS',
+            onChange: () => {
+                if (document.getElementById('custom-actions-div').childElementCount === 0) {
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No actions defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
+            },
+        },
+        ENV_VARS: {
+            name: 'Environment',
+            title: 'CONFIGURE ENVIRONMENT VARIABLES',
+            onChange: () => {
+                if (document.getElementById('env-container').childElementCount === 0) {
+                    document.getElementById('env-div').style.display = 'none';
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No environment variables are defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
+            }
+        }
+    };
+    const loadedModules = [];
+
+    <!--MARKER-OTA-->
+    loadedModules.push(moduleTypes.OTA_FIRMWARE);
+    loadedModules.push(moduleTypes.OTA_FILESYSTEM);
+    <!--END-OTA-->
+
+    <!--MARKER-WIRELESS-->
+    loadedModules.push(moduleTypes.WIRELESS);
+    <!--END-WIRELESS-->
+
+    <!--MARKER-FILES-->
+    loadedModules.push(moduleTypes.FILE_BROWSER);
+    <!--END-FILES-->
+
+    <!--MARKER-CA-->
+    loadedModules.push(moduleTypes.CUSTOM_ACTIONS);
+    <!--END-CA-->
+
+    <!--MARKER-ENV-->
+    loadedModules.push(moduleTypes.ENV_VARS);
+    <!--END-ENV-->
+
+    moduleSelSpan.innerText = loadedModules[0].name;
+    moduleSelSpan.classList.add('select');
+    moduleSel.appendChild(moduleSelSpan);
+
+    function changeModule(m, i, span, ignoreEvent) {
+        moduleSelSpan.style.left = (span.offsetLeft === 0 ? 6 : span.offsetLeft) + 'px';
+        moduleSelSpan.innerText = span.innerText;
+        currentModule = i;
+        moduleTitle.innerText = m.title;
+
+        for (let j = 1; j < moduleContainer.children.length; j++) {
+            const module = moduleContainer.children.item(j);
+            module.style.display = 'none';
+        }
+
+        moduleContainer.children.item(i+1).style.removeProperty('display');
+
+        if (!ignoreEvent && m.onChange) {
+            m.onChange(m, i, span);
+        }
+
+        sessionStorage.setItem('tab', i);
+    }
+
+    loadedModules.forEach((m, i) => {
+        const span = document.createElement('span');
+        span.innerText = m.name;
+        span.title = m.title;
+        span.addEventListener('click', () => changeModule(m, i, span));
+        moduleSel.appendChild(span);
+    });
+
+    const tabFromStorage = parseInt(sessionStorage.getItem('tab') || "0");
+    setTimeout(() => {
+        changeModule(loadedModules[tabFromStorage], tabFromStorage, moduleSel.children.item(tabFromStorage+1));
+    }, 100);
 </script>
 </body>
 </html>
