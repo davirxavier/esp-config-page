@@ -588,7 +588,7 @@ namespace ESP_CONFIG_PAGE {
                 File file = LittleFS.open(path);
                 File nextFile;
                 while (file.isDirectory() && (nextFile = file.openNextFile())) {
-                    ret += String(nextFile.name()) + ":" + (file.isDirectory() ? "true" : "false") + ":" + file.size() + ";";
+                    ret += String(nextFile.name()) + ":" + (nextFile.isDirectory() ? "true" : "false") + ":" + nextFile.size() + ";";
 
                     if (nextFile) {
                         nextFile.close();
