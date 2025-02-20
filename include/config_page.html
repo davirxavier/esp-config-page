@@ -1000,6 +1000,7 @@
             return;
         }
 
+        let isFirstMessage = true;
         loggingSocket = new WebSocket('ws://' + window.location.host + ':4000/ws');
 
         loggingSocket.onopen = () => {
@@ -1014,6 +1015,15 @@
         };
 
         loggingSocket.onmessage = function(event) {
+            if (isFirstMessage) {
+                isFirstMessage = false;
+
+                document.getElementById('logging-table-body').innerHTML = '';
+                const split = event && event.data ? event.data.split('\n') : [];
+                split.filter(s => s && s.length > 0).forEach(pushMessage);
+                return;
+            }
+
             const isBlob = Object.prototype.toString.call(event.data) === "[object Blob]";
             if (event && event.data && isBlob) {
                 lastPing = Date.now();
