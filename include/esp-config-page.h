@@ -23,55 +23,29 @@
 
 #ifdef ENABLE_LOGGING
 #define LOGH() Serial.print("[ESP-CONFIG-PAGE] ")
-#define LOG(str) LOGH(); Serial.print(str)
-#define LOGN(str) LOGH(); Serial.println(str)
-#define LOGF(str, p...) LOGH(); Serial.printf(str, p)
+#define LOG(str) LOGH(); ESP_CONFIG_PAGE::serial->print(str)
+#define LOGN(str) LOGH(); ESP_CONFIG_PAGE::serial->println(str)
+#define LOGF(str, p...) LOGH(); ESP_CONFIG_PAGE::serial->printf(str, p)
 #else
 #define LOG(str)
 #define LOGN(str)
 #define LOGF(str, p...)
 #endif
 
-namespace newer_std {
-    template<class T> struct _Unique_if {
-        typedef std::unique_ptr<T> _Single_object;
-    };
+#include <esp-config-page-logging.h>
 
-    template<class T> struct _Unique_if<T[]> {
-        typedef std::unique_ptr<T[]> _Unknown_bound;
-    };
+#include "std_util.h"
 
-    template<class T, size_t N> struct _Unique_if<T[N]> {
-        typedef void _Known_bound;
-    };
-
-    template<class T, class... Args>
-    typename _Unique_if<T>::_Single_object
-    make_unique(Args&&... args) {
-        return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-    }
-
-    template<class T>
-    typename _Unique_if<T>::_Unknown_bound
-    make_unique(size_t n) {
-        typedef typename std::remove_extent<T>::type U;
-        return std::unique_ptr<T>(new U[n]());
-    }
-
-    template<class T, class... Args>
-    typename _Unique_if<T>::_Known_bound
-    make_unique(Args&&...) = delete;
-}
-
-namespace ESP_CONFIG_PAGE {
-
+namespace ESP_CONFIG_PAGE
+{
 #ifdef ESP32
     using WEBSERVER_T = WebServer;
 #elif ESP8266
     using WEBSERVER_T = ESP8266WebServer;
 #endif
 
-    enum REQUEST_TYPE {
+    enum REQUEST_TYPE
+    {
         CONFIG_PAGE,
         SAVE,
         CUSTOM_ACTIONS,
@@ -86,40 +60,50 @@ namespace ESP_CONFIG_PAGE {
         WIFI_SET
     };
 
-    struct EnvVar {
+    struct EnvVar
+    {
         /**
          * @param key - environment variable name and search key, should be unique between all environment variables.
          * @param value - initial value for the environment variable.
          */
-        EnvVar(const String key, String value) : key(key), value(value) {};
+        EnvVar(const String key, String value) : key(key), value(value)
+        {
+        };
         const String key;
         String value;
     };
 
-    class EnvVarStorage {
+    class EnvVarStorage
+    {
     public:
-        EnvVarStorage() {}
-        virtual void saveVars(EnvVar **envVars, uint8_t count);
+        EnvVarStorage()
+        {
+        }
+
+        virtual void saveVars(EnvVar** envVars, uint8_t count);
         virtual uint8_t countVars();
         virtual void recoverVars(std::shared_ptr<ESP_CONFIG_PAGE::EnvVar> envVars[]);
     };
 
-    struct CustomAction {
+    struct CustomAction
+    {
         const String key;
-        std::function<void(WEBSERVER_T &server)> handler;
+        std::function<void(WEBSERVER_T& server)> handler;
     };
 
-    EnvVar **envVars;
+    Stream* serial = &Serial;
+
+    EnvVar** envVars;
     uint8_t envVarCount = 0;
     uint8_t maxEnvVars = 0;
 
-    CustomAction **customActions;
+    CustomAction** customActions;
     uint8_t customActionsCount;
     uint8_t maxCustomActions;
 
     String name;
-    void (*saveEnvVarsCallback)(EnvVar **envVars, uint8_t envVarCount) = NULL;
-    EnvVarStorage *envVarStorage = NULL;
+    void (*saveEnvVarsCallback)(EnvVar** envVars, uint8_t envVarCount) = NULL;
+    EnvVarStorage* envVarStorage = NULL;
 
     const char escapeChars[] = {':', ';', '+', '\0'};
     const char escaper = '|';
@@ -134,13 +118,16 @@ namespace ESP_CONFIG_PAGE {
     bool apStarted = false;
     bool connected = false;
 
-    int sizeWithEscaping(const char *str) {
+    int sizeWithEscaping(const char* str)
+    {
         int len = strlen(str);
         int escapedCount = 0;
 
-        for (int i = 0; i < len; i++) {
+        for (int i = 0; i < len; i++)
+        {
             const char c = str[i];
-            if (strchr(escapeChars, c)) {
+            if (strchr(escapeChars, c))
+            {
                 escapedCount++;
             }
         }
@@ -148,42 +135,53 @@ namespace ESP_CONFIG_PAGE {
         return escapedCount + len + 1;
     }
 
-    int caSize() {
+    int caSize()
+    {
         int infoSize = 0;
 
-        for (uint8_t i = 0; i < customActionsCount; i++) {
-            CustomAction *ca = customActions[i];
+        for (uint8_t i = 0; i < customActionsCount; i++)
+        {
+            CustomAction* ca = customActions[i];
             infoSize += sizeWithEscaping(ca->key.c_str()) + 4;
         }
 
         return infoSize;
     }
 
-    int envSize() {
+    int envSize()
+    {
         int infoSize = 0;
 
-        for (uint8_t i = 0; i < envVarCount; i++) {
-            EnvVar *ev = envVars[i];
+        for (uint8_t i = 0; i < envVarCount; i++)
+        {
+            EnvVar* ev = envVars[i];
             infoSize += sizeWithEscaping(ev->key.c_str()) + sizeWithEscaping(ev->value.c_str()) + 4;
         }
 
         return infoSize;
     }
 
-    void unescape(char buf[], const char *source) {
+    void unescape(char buf[], const char* source)
+    {
         unsigned int len = strlen(source);
         bool escaped = false;
         int bufIndex = 0;
 
-        for (unsigned int i = 0; i < len; i++) {
+        for (unsigned int i = 0; i < len; i++)
+        {
             const char c = source[i];
 
-            if (c == escaper && !escaped) {
+            if (c == escaper && !escaped)
+            {
                 escaped = true;
-            } else if (strchr(escapeChars, c) && !escaped) {
+            }
+            else if (strchr(escapeChars, c) && !escaped)
+            {
                 buf[bufIndex] = c;
                 bufIndex++;
-            } else {
+            }
+            else
+            {
                 escaped = false;
                 buf[bufIndex] = c;
                 bufIndex++;
@@ -193,12 +191,15 @@ namespace ESP_CONFIG_PAGE {
         buf[bufIndex] = '\0';
     }
 
-    void escape(char buf[], const char *source) {
+    void escape(char buf[], const char* source)
+    {
         int len = strlen(source);
         int bufIndex = 0;
 
-        for (int i = 0; i < len; i++) {
-            if (strchr(escapeChars, source[i])) {
+        for (int i = 0; i < len; i++)
+        {
+            if (strchr(escapeChars, source[i]))
+            {
                 buf[bufIndex] = escaper;
                 bufIndex++;
             }
@@ -210,19 +211,26 @@ namespace ESP_CONFIG_PAGE {
         buf[bufIndex] = '\0';
     }
 
-    uint8_t countChar(const char str[], const char separator) {
+    uint8_t countChar(const char str[], const char separator)
+    {
         uint8_t delimiterCount = 0;
         bool escaped = false;
         int len = strlen(str);
 
-        for (int i = 0; i < len; i++) {
+        for (int i = 0; i < len; i++)
+        {
             char cstr = str[i];
-            if (cstr == escaper && !escaped) {
-              escaped = true;
-            } else if (cstr == separator && !escaped) {
-              delimiterCount++;
-            } else {
-              escaped = false;
+            if (cstr == escaper && !escaped)
+            {
+                escaped = true;
+            }
+            else if (cstr == separator && !escaped)
+            {
+                delimiterCount++;
+            }
+            else
+            {
+                escaped = false;
             }
         }
 
@@ -236,28 +244,39 @@ namespace ESP_CONFIG_PAGE {
         bool escaped = false;
         unsigned int len = strlen(data);
 
-        for (unsigned int i = 0; i < len; i++) {
+        for (unsigned int i = 0; i < len; i++)
+        {
             const char c = data[i];
 
-            if (c == '|' && !escaped) {
+            if (c == '|' && !escaped)
+            {
                 escaped = true;
-            } else if (c == separator && !escaped) {
+            }
+            else if (c == separator && !escaped)
+            {
                 int newLen = i - lastIndex + 1;
                 ret[currentStr] = newer_std::make_unique<char[]>(newLen);
 
-                strncpy(ret[currentStr].get(), data + lastIndex, newLen-1);
-                ret[currentStr].get()[newLen-1] = '\0';
+                strncpy(ret[currentStr].get(), data + lastIndex, newLen - 1);
+                ret[currentStr].get()[newLen - 1] = '\0';
 
-                lastIndex = i+1;
+                lastIndex = i + 1;
                 currentStr++;
-            } else {
+            }
+            else
+            {
                 escaped = false;
             }
         }
     }
 
-    void handleRequest(WEBSERVER_T &server, String username, String password, REQUEST_TYPE reqType);
-    bool handleLogin(WEBSERVER_T &server, String username, String password);
+    void setSerial(Stream* toSet)
+    {
+        serial = toSet;
+    }
+
+    void handleRequest(WEBSERVER_T& server, String username, String password, REQUEST_TYPE reqType);
+    bool handleLogin(WEBSERVER_T& server, String username, String password);
 
     /**
      * @param server - web server instance
@@ -265,15 +284,20 @@ namespace ESP_CONFIG_PAGE {
      * @param password - password for the configuration page
      * @param nodeName - DOT NOT USE THE CHARACTERS ":", ";" or "+"
      */
-    void setup(WEBSERVER_T &server, String username, String password, String nodeName) {
+    void setup(WEBSERVER_T& server, String username, String password, String nodeName)
+    {
         LOGN("Entered config page setup.");
 
 #ifdef ESP32
-        if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+        if (!LittleFS.begin(false /* false: Do not format if mount failed */))
+        {
             Serial.println("Failed to mount LittleFS");
-            if (!LittleFS.begin(true /* true: format */)) {
+            if (!LittleFS.begin(true /* true: format */))
+            {
                 Serial.println("Failed to format LittleFS");
-            } else {
+            }
+            else
+            {
                 Serial.println("LittleFS formatted successfully");
             }
         }
@@ -285,56 +309,72 @@ namespace ESP_CONFIG_PAGE {
         maxCustomActions = 0;
         name = nodeName;
 
-        server.on(F("/config"), HTTP_GET, [&server, username, password]() {
+        server.on(F("/config"), HTTP_GET, [&server, username, password]()
+        {
             handleRequest(server, username, password, CONFIG_PAGE);
         });
 
-        server.on(F("/config/info"), HTTP_GET, [&server, username, password]() {
+        server.on(F("/config/info"), HTTP_GET, [&server, username, password]()
+        {
             handleRequest(server, username, password, INFO);
         });
 
-        server.on(F("/config/save"), HTTP_POST, [&server, username, password]() {
+        server.on(F("/config/save"), HTTP_POST, [&server, username, password]()
+        {
             handleRequest(server, username, password, SAVE);
         });
 
-        server.on(F("/config/customa"), HTTP_POST, [&server, username, password]() {
+        server.on(F("/config/customa"), HTTP_POST, [&server, username, password]()
+        {
             handleRequest(server, username, password, CUSTOM_ACTIONS);
         });
 
-        server.on(F("/config/files"), HTTP_POST, [&server, username, password]() {
+        server.on(F("/config/files"), HTTP_POST, [&server, username, password]()
+        {
             handleRequest(server, username, password, FILES);
         });
 
-        server.on(F("/config/files/download"), HTTP_POST, [&server, username, password]() {
+        server.on(F("/config/files/download"), HTTP_POST, [&server, username, password]()
+        {
             handleRequest(server, username, password, DOWNLOAD_FILE);
         });
 
-        server.on(F("/config/files/delete"), HTTP_POST, [&server, username, password]() {
+        server.on(F("/config/files/delete"), HTTP_POST, [&server, username, password]()
+        {
             handleRequest(server, username, password, DELETE_FILE);
         });
 
-        server.on(F("/config/update/firmware"), HTTP_POST, [&server, username, password]() {
-            handleRequest(server, username, password, OTA_END);
-        }, [&server, username, password]() {
-            handleRequest(server, username, password, OTA_WRITE_FIRMWARE);
-        });
+        server.on(F("/config/update/firmware"), HTTP_POST, [&server, username, password]()
+                  {
+                      handleRequest(server, username, password, OTA_END);
+                  }, [&server, username, password]()
+                  {
+                      handleRequest(server, username, password, OTA_WRITE_FIRMWARE);
+                  });
 
-        server.on(F("/config/update/filesystem"), HTTP_POST, [&server, username, password]() {
-            handleRequest(server, username, password, OTA_END);
-        }, [&server, username, password]() {
-            handleRequest(server, username, password, OTA_WRITE_FILESYSTEM);
-        });
+        server.on(F("/config/update/filesystem"), HTTP_POST, [&server, username, password]()
+                  {
+                      handleRequest(server, username, password, OTA_END);
+                  }, [&server, username, password]()
+                  {
+                      handleRequest(server, username, password, OTA_WRITE_FILESYSTEM);
+                  });
 
-        server.on(F("/config/wifi"), HTTP_GET, [&server, username, password]() {
+        server.on(F("/config/wifi"), HTTP_GET, [&server, username, password]()
+        {
             handleRequest(server, username, password, WIFI_LIST);
         });
 
-        server.on(F("/config/wifi"), HTTP_POST, [&server, username, password]() {
+        server.on(F("/config/wifi"), HTTP_POST, [&server, username, password]()
+        {
             handleRequest(server, username, password, WIFI_SET);
         });
 
-        server.onNotFound([&server]() {
-            server.send(404, "text/html", F("<html><head><title>Page not found</title></head><body><p>Page not found.</p> <a href=\"/config\">Go to root.</a></body></html>"));
+        server.onNotFound([&server]()
+        {
+            server.send(404, "text/html",
+                        F(
+                            "<html><head><title>Page not found</title></head><body><p>Page not found.</p> <a href=\"/config\">Go to root.</a></body></html>"));
         });
 
         LOGN("Config page setup complete.");
@@ -345,17 +385,23 @@ namespace ESP_CONFIG_PAGE {
      *
      * @param storage - storage instance for environment variables. Default for this libraty is LittleFSEnvVarStorage, but can be any subclass of EnvVarStorage.
      */
-    void setAndUpdateEnvVarStorage(EnvVarStorage *storage) {
+    void setAndUpdateEnvVarStorage(EnvVarStorage* storage)
+    {
         envVarStorage = storage;
 
-        if (envVarStorage != NULL) {
+        if (envVarStorage != NULL)
+        {
             LOGN("Env var storage is set, configuring env vars.");
 #ifdef ESP32
-            if (!LittleFS.begin(false /* false: Do not format if mount failed */)) {
+            if (!LittleFS.begin(false /* false: Do not format if mount failed */))
+            {
                 LOGN("Failed to mount LittleFS");
-                if (!LittleFS.begin(true /* true: format */)) {
+                if (!LittleFS.begin(true /* true: format */))
+                {
                     LOGN("Failed to format LittleFS");
-                } else {
+                }
+                else
+                {
                     LOGN("LittleFS formatted successfully");
                 }
             }
@@ -365,22 +411,27 @@ namespace ESP_CONFIG_PAGE {
 
             uint8_t count = envVarStorage->countVars();
             LOGF("Found %d env vars\n", count);
-            if (count > 0) {
+            if (count > 0)
+            {
                 LOGN("Recoving env vars from storage.");
                 std::shared_ptr<EnvVar> recovered[count];
                 envVarStorage->recoverVars(recovered);
 
-                for (uint8_t i = 0; i < count; i++) {
+                for (uint8_t i = 0; i < count; i++)
+                {
                     std::shared_ptr<EnvVar> ev = recovered[i];
 
                     LOGF("Recovered env var with key %s, searching in defined vars.\n", ev->key.c_str());
-                    for (uint8_t j = 0; j < envVarCount; j++) {
-                        EnvVar *masterEv = envVars[j];
-                        if (masterEv == NULL) {
+                    for (uint8_t j = 0; j < envVarCount; j++)
+                    {
+                        EnvVar* masterEv = envVars[j];
+                        if (masterEv == NULL)
+                        {
                             break;
                         }
 
-                        if (masterEv->key == ev->key) {
+                        if (masterEv->key == ev->key)
+                        {
                             LOGF("Setting env var %s to value %s.\n", ev->key.c_str(), ev->value.c_str());
                             masterEv->value = ev->value;
                         }
@@ -395,13 +446,15 @@ namespace ESP_CONFIG_PAGE {
      *
      * @param ev - environment variable to be added. EnvVar key value has to be unique between all added variables.
      */
-    void addEnvVar(EnvVar *ev) {
+    void addEnvVar(EnvVar* ev)
+    {
         LOGF("Adding env var %s.\n", ev->key.c_str());
 
-        if (envVarCount + 1 > maxEnvVars) {
+        if (envVarCount + 1 > maxEnvVars)
+        {
             maxEnvVars = maxEnvVars == 0 ? 1 : ceil(maxEnvVars * 1.5);
             LOGF("Env var array overflow, increasing size to %d.\n", maxEnvVars);
-            envVars = (EnvVar**) realloc(envVars, sizeof(EnvVar*) * maxEnvVars);
+            envVars = (EnvVar**)realloc(envVars, sizeof(EnvVar*) * maxEnvVars);
         }
 
         envVars[envVarCount] = ev;
@@ -414,19 +467,22 @@ namespace ESP_CONFIG_PAGE {
      * @param key - name of the action, has to be unique for all added actions.
      * @param handler - handler function for the action.
      */
-    void addCustomAction(String key, std::function<void(WEBSERVER_T &server)> handler) {
+    void addCustomAction(String key, std::function<void(WEBSERVER_T& server)> handler)
+    {
         LOGF("Adding action %s.\n", key.c_str());
-        if (customActionsCount + 1 > maxCustomActions) {
+        if (customActionsCount + 1 > maxCustomActions)
+        {
             maxCustomActions = maxCustomActions == 0 ? 1 : ceil(maxCustomActions * 1.5);
             LOGF("Actions array overflow, increasing size to %d.\n", maxCustomActions);
-            customActions = (CustomAction**) realloc(customActions, sizeof(CustomAction*) * maxCustomActions);
+            customActions = (CustomAction**)realloc(customActions, sizeof(CustomAction*) * maxCustomActions);
         }
 
         customActions[customActionsCount] = new CustomAction{key, handler};
         customActionsCount++;
     }
 
-    const char* getUpdateErrorStr() {
+    const char* getUpdateErrorStr()
+    {
 #ifdef ESP32
         return Update.errorString();
 #elif ESP8266
@@ -434,12 +490,15 @@ namespace ESP_CONFIG_PAGE {
 #endif
     }
 
-    void ota(WEBSERVER_T &server, String username, String password, REQUEST_TYPE reqType) {
+    void ota(WEBSERVER_T& server, String username, String password, REQUEST_TYPE reqType)
+    {
         LOGN("OTA upload receiving, starting update process.");
+        ESP_CONFIG_PAGE_LOGGING::disableLogging();
 
         HTTPUpload& upload = server.upload();
         int command = U_FLASH;
-        if (reqType == OTA_WRITE_FILESYSTEM) {
+        if (reqType == OTA_WRITE_FILESYSTEM)
+        {
             LOGN("OTA update set to FILESYSTEM mode.");
 #ifdef ESP32
             command = U_SPIFFS;
@@ -448,7 +507,8 @@ namespace ESP_CONFIG_PAGE {
 #endif
         }
 
-        if (upload.status == UPLOAD_FILE_START) {
+        if (upload.status == UPLOAD_FILE_START)
+        {
             LOGN("Starting OTA update.");
 #ifdef ESP8266
             WiFiUDP::stopAll();
@@ -468,22 +528,31 @@ namespace ESP_CONFIG_PAGE {
 #endif
 
             LOGF("Calculate max space is %d.\n", maxSpace);
-            if (!Update.begin(maxSpace, command)) {  // start with max available size
+            if (!Update.begin(maxSpace, command))
+            {
+                // start with max available size
                 LOGN("Error when starting update.");
                 server.send(400, "text/plain", getUpdateErrorStr());
             }
-
-        } else if (upload.status == UPLOAD_FILE_WRITE) {
+        }
+        else if (upload.status == UPLOAD_FILE_WRITE)
+        {
             LOGN("Update write.");
-            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
+            {
                 LOGN("Error when writing update.");
                 server.send(400, "text/plain", getUpdateErrorStr());
             }
-        } else if (upload.status == UPLOAD_FILE_END) {
+        }
+        else if (upload.status == UPLOAD_FILE_END)
+        {
             LOGN("Update ended.");
-            if (Update.end(true)) {
+            if (Update.end(true))
+            {
                 server.send(200);
-            } else {
+            }
+            else
+            {
                 LOGN("Error finishing update.");
                 server.send(400, "text/plain", getUpdateErrorStr());
             }
@@ -495,7 +564,8 @@ namespace ESP_CONFIG_PAGE {
      * Returns true if the wifi connection is ready or false if otherwise.
      * @return boolean
      */
-    bool isWiFiReady() {
+    bool isWiFiReady()
+    {
         return WiFi.status() == WL_CONNECTED;
     }
 
@@ -506,9 +576,11 @@ namespace ESP_CONFIG_PAGE {
      * configurations. Should be false on normal usage.
      * @param timeoutMs - timeout in milliseconds for waiting for a connection.
      */
-    void tryConnectWifi(bool force, unsigned long timeoutMs) {
+    void tryConnectWifi(bool force, unsigned long timeoutMs)
+    {
         LOGF("Trying to connect to wifi, force reconnect: %s\n", force ? "yes" : "no");
-        if (!force && WiFi.status() == WL_CONNECTED) {
+        if (!force && WiFi.status() == WL_CONNECTED)
+        {
             LOGN("Already connected, cancelling reconnection.");
             return;
         }
@@ -522,10 +594,13 @@ namespace ESP_CONFIG_PAGE {
         WiFi.setAutoReconnect(true);
         WiFi.persistent(true);
 
-        if (force) {
+        if (force)
+        {
             WiFi.disconnect(false, true);
             WiFi.begin(wifiSsid, wifiPass);
-        } else {
+        }
+        else
+        {
             WiFi.begin();
         }
 
@@ -533,7 +608,8 @@ namespace ESP_CONFIG_PAGE {
         int result = WiFi.waitForConnectResult(timeoutMs);
         LOGF("Connection result: %d\n", result);
 
-        if (result != WL_CONNECTED) {
+        if (result != WL_CONNECTED)
+        {
             LOGN("Connection error.");
             lastConnectionError = result;
         }
@@ -550,35 +626,42 @@ namespace ESP_CONFIG_PAGE {
         tryConnectWifi(force, 30000);
     }
 
-    void setWiFiCredentials(String &ssid, String &pass) {
+    void setWiFiCredentials(String& ssid, String& pass)
+    {
         wifiSsid = ssid;
         wifiPass = pass;
     }
 
-    void setAPConfig(const char ssid[], const char pass[]) {
+    void setAPConfig(const char ssid[], const char pass[])
+    {
         apSsid = ssid;
         apPass = pass;
         WiFi.softAPConfig(apIp, apIp, IPAddress(255, 255, 255, 0));
     }
 
-    inline void handleRequest(WEBSERVER_T &server, String username, String password, REQUEST_TYPE reqType) {
+    inline void handleRequest(WEBSERVER_T& server, String username, String password, REQUEST_TYPE reqType)
+    {
         LOGF("Received request of type %d.\n", reqType);
 
-        if (!server.authenticate(username.c_str(), password.c_str())) {
+        if (!server.authenticate(username.c_str(), password.c_str()))
+        {
             LOGN("Authentication failure.");
             delay(1500);
             server.requestAuthentication();
             return;
         }
 
-        switch (reqType) {
-            case CONFIG_PAGE:
-                server.sendHeader("Content-Encoding", "gzip");
-                server.send_P(200, "text/html", (const char*) ESP_CONFIG_HTML, ESP_CONFIG_HTML_LEN);
-                break;
-            case FILES: {
+        switch (reqType)
+        {
+        case CONFIG_PAGE:
+            server.sendHeader("Content-Encoding", "gzip");
+            server.send_P(200, "text/html", (const char*)ESP_CONFIG_HTML, ESP_CONFIG_HTML_LEN);
+            break;
+        case FILES:
+            {
                 String path = server.arg("plain");
-                if (path.isEmpty()) {
+                if (path.isEmpty())
+                {
                     path = "/";
                 }
 
@@ -587,10 +670,13 @@ namespace ESP_CONFIG_PAGE {
 #ifdef ESP32
                 File file = LittleFS.open(path);
                 File nextFile;
-                while (file.isDirectory() && (nextFile = file.openNextFile())) {
-                    ret += String(nextFile.name()) + ":" + (nextFile.isDirectory() ? "true" : "false") + ":" + nextFile.size() + ";";
+                while (file.isDirectory() && (nextFile = file.openNextFile()))
+                {
+                    ret += String(nextFile.name()) + ":" + (nextFile.isDirectory() ? "true" : "false") + ":" + nextFile.
+                        size() + ";";
 
-                    if (nextFile) {
+                    if (nextFile)
+                    {
                         nextFile.close();
                     }
                 }
@@ -604,14 +690,17 @@ namespace ESP_CONFIG_PAGE {
                 server.send(200, "text/plain", ret);
                 break;
             }
-            case DOWNLOAD_FILE: {
+        case DOWNLOAD_FILE:
+            {
                 String path = server.arg("plain");
-                if (path.isEmpty()) {
+                if (path.isEmpty())
+                {
                     server.send(404);
                     return;
                 }
 
-                if (!LittleFS.exists(path)) {
+                if (!LittleFS.exists(path))
+                {
                     server.send(404);
                     return;
                 }
@@ -622,14 +711,17 @@ namespace ESP_CONFIG_PAGE {
                 file.close();
                 break;
             }
-            case DELETE_FILE: {
+        case DELETE_FILE:
+            {
                 String path = server.arg("plain");
-                if (path.isEmpty()) {
+                if (path.isEmpty())
+                {
                     server.send(404);
                     return;
                 }
 
-                if (!LittleFS.exists(path)) {
+                if (!LittleFS.exists(path))
+                {
                     server.send(404);
                     return;
                 }
@@ -638,29 +730,38 @@ namespace ESP_CONFIG_PAGE {
                 server.send(200);
                 break;
             }
-            case CUSTOM_ACTIONS: {
-                if (customActionsCount == 0) {
+        case CUSTOM_ACTIONS:
+            {
+                if (customActionsCount == 0)
+                {
                     return;
                 }
 
-                CustomAction *ca = NULL;
+                CustomAction* ca = NULL;
                 String body = server.arg(F("plain"));
 
-                for (uint8_t i = 0; i < customActionsCount; i++) {
-                    if (String(customActions[i]->key) == body) {
+                for (uint8_t i = 0; i < customActionsCount; i++)
+                {
+                    if (String(customActions[i]->key) == body)
+                    {
                         ca = customActions[i];
                     }
                 }
 
-                if (ca != NULL) {
+                if (ca != NULL)
+                {
                     ca->handler(server);
-                } else {
+                }
+                else
+                {
                     server.send(200);
                 }
                 break;
             }
-            case SAVE: {
-                if (envVarCount == 0) {
+        case SAVE:
+            {
+                if (envVarCount == 0)
+                {
                     server.send(200);
                     return;
                 }
@@ -671,10 +772,12 @@ namespace ESP_CONFIG_PAGE {
                 std::shared_ptr<char[]> split[size];
                 getValueSplit(body.c_str(), ';', split);
 
-                for (uint8_t i = 0; i < size; i++) {
+                for (uint8_t i = 0; i < size; i++)
+                {
                     uint8_t keyAndValueSize = countChar(split[i].get(), ':');
 
-                    if (keyAndValueSize < 2) {
+                    if (keyAndValueSize < 2)
+                    {
                         continue;
                     }
 
@@ -687,24 +790,29 @@ namespace ESP_CONFIG_PAGE {
                     unescape(key, keyAndValue[0].get());
                     unescape(newValue, keyAndValue[1].get());
 
-                    for (uint8_t j = 0; j < envVarCount; j++) {
-                        EnvVar *ev = envVars[j];
-                        if (ev == NULL) {
+                    for (uint8_t j = 0; j < envVarCount; j++)
+                    {
+                        EnvVar* ev = envVars[j];
+                        if (ev == NULL)
+                        {
                             break;
                         }
 
-                        if (ev->key == key) {
+                        if (ev->key == key)
+                        {
                             ev->value = newValue;
                             break;
                         }
                     }
                 }
 
-                if (saveEnvVarsCallback != NULL) {
+                if (saveEnvVarsCallback != NULL)
+                {
                     saveEnvVarsCallback(envVars, envVarCount);
                 }
 
-                if (envVarStorage != NULL) {
+                if (envVarStorage != NULL)
+                {
                     envVarStorage->saveVars(envVars, envVarCount);
                 }
 
@@ -718,22 +826,26 @@ namespace ESP_CONFIG_PAGE {
 #endif
                 break;
             }
-            case OTA_END: {
+        case OTA_END:
+            {
                 server.sendHeader("Connection", "close");
                 server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
                 delay(100);
                 ESP.restart();
                 break;
             }
-            case OTA_WRITE_FIRMWARE: {
+        case OTA_WRITE_FIRMWARE:
+            {
                 ota(server, username, password, OTA_WRITE_FIRMWARE);
                 break;
             }
-            case OTA_WRITE_FILESYSTEM: {
+        case OTA_WRITE_FILESYSTEM:
+            {
                 ota(server, username, password, OTA_WRITE_FILESYSTEM);
                 break;
             }
-            case INFO: {
+        case INFO:
+            {
 #ifdef ESP32
                 String usedBytes = String(LittleFS.usedBytes());
                 String totalBytes = String(LittleFS.totalBytes());
@@ -746,7 +858,8 @@ namespace ESP_CONFIG_PAGE {
                 String freeHeap = String(ESP.getFreeHeap());
 
                 int nameLen = name.length();
-                int infoSize = nameLen + WiFi.macAddress().length() + usedBytes.length() + totalBytes.length() + freeHeap.length() + 64;
+                int infoSize = nameLen + WiFi.macAddress().length() + usedBytes.length() + totalBytes.length() +
+                    freeHeap.length() + 64;
                 infoSize += envSize() + caSize();
 
                 char buf[infoSize];
@@ -762,8 +875,9 @@ namespace ESP_CONFIG_PAGE {
                 strcat(buf, freeHeap.c_str());
                 strcat(buf, "+");
 
-                for (uint8_t i = 0; i < envVarCount; i++) {
-                    EnvVar *ev = envVars[i];
+                for (uint8_t i = 0; i < envVarCount; i++)
+                {
+                    EnvVar* ev = envVars[i];
 
                     char bufKey[sizeWithEscaping(ev->key.c_str())];
                     char bufVal[sizeWithEscaping(ev->value.c_str())];
@@ -778,8 +892,9 @@ namespace ESP_CONFIG_PAGE {
                 }
                 strcat(buf, "+");
 
-                for (uint8_t i = 0; i < customActionsCount; i++) {
-                    CustomAction *ca = customActions[i];
+                for (uint8_t i = 0; i < customActionsCount; i++)
+                {
+                    CustomAction* ca = customActions[i];
 
                     char bufKey[sizeWithEscaping(ca->key.c_str())];
                     escape(bufKey, ca->key.c_str());
@@ -792,25 +907,30 @@ namespace ESP_CONFIG_PAGE {
                 strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP ? "0" : "1");
                 strcat(buf, "+");
 
+                server.sendHeader("Authorization", server.header("Authorization"));
                 server.send(200, "text/plain", buf);
                 break;
             }
-            case WIFI_LIST: {
+        case WIFI_LIST:
+            {
                 int count = WiFi.scanNetworks();
                 String ssid = WiFi.SSID();
                 int bufSize = ssid.length() + 8;
                 int wifiStatus = WiFi.status();
 
                 char ssids[count][33];
-                if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1) {
-                    for (int i = 0; i < count; i++) {
+                if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1)
+                {
+                    for (int i = 0; i < count; i++)
+                    {
 #ifdef ESP32
-                        const wifi_ap_record_t *it = reinterpret_cast<wifi_ap_record_t*>(WiFi.getScanInfoByIndex(i));
+                        const wifi_ap_record_t* it = reinterpret_cast<wifi_ap_record_t*>(WiFi.getScanInfoByIndex(i));
 #elif ESP8266
                         const bss_info *it = WiFi.getScanInfoByIndex(i);
 #endif
 
-                        if(!it) {
+                        if (!it)
+                        {
                             ssids[i][0] = '\0';
                             continue;
                         }
@@ -824,14 +944,16 @@ namespace ESP_CONFIG_PAGE {
                 char buf[bufSize];
                 buf[0] = '\0';
 
-                if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1) {
-                    for (int i = 0; i < count; i++) {
+                if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1)
+                {
+                    for (int i = 0; i < count; i++)
+                    {
                         char escapebuf[strlen(ssids[i])];
                         escape(escapebuf, ssids[i]);
 
                         uint32_t rssi = WiFi.RSSI(i);
                         int rssiLength = snprintf(NULL, 0, "%d", rssi);
-                        char rssibuf[rssiLength+1];
+                        char rssibuf[rssiLength + 1];
                         sprintf(rssibuf, "%d", rssi);
 
                         strcat(buf, escapebuf);
@@ -850,14 +972,16 @@ namespace ESP_CONFIG_PAGE {
                 server.send(200, "text/plain", buf);
                 break;
             }
-            case WIFI_SET: {
+        case WIFI_SET:
+            {
                 String body = server.arg("plain");
 
                 uint8_t size = countChar(body.c_str(), ':');
                 std::shared_ptr<char[]> ssidAndPass[size];
                 getValueSplit(body.c_str(), ':', ssidAndPass);
 
-                if (size < 2) {
+                if (size < 2)
+                {
                     server.send(400, "text/plain", "Invalid request.");
                     return;
                 }
@@ -880,58 +1004,67 @@ namespace ESP_CONFIG_PAGE {
     /**
      * Updated the state of the library, should be called every main loop of the board.
      */
-    void loop() {
+    void loop()
+    {
         int status = WiFi.status();
 
-         if (!apStarted && lastConnectionError != -1) {
-             LOGF("Connection error %d, starting AP.\n", lastConnectionError);
+        if (!apStarted && lastConnectionError != -1)
+        {
+            LOGF("Connection error %d, starting AP.\n", lastConnectionError);
 
 #ifdef ESP32
-             WiFi.mode(WIFI_MODE_APSTA);
+            WiFi.mode(WIFI_MODE_APSTA);
 #elif ESP8266
              WiFi.mode(WIFI_AP_STA);
 #endif
 
-             WiFi.softAP(apSsid, apPass);
-             LOGF("Server IP is %s.\n", apIp.toString().c_str());
-             apStarted = true;
-             connected = false;
+            WiFi.softAP(apSsid, apPass);
+            LOGF("Server IP is %s.\n", apIp.toString().c_str());
+            apStarted = true;
+            connected = false;
         }
 
-         if (!connected && status == WL_CONNECTED) {
-             LOGF("Connected successfully to wireless network, IP: %s.\n", WiFi.localIP().toString().c_str());
-             lastConnectionError = -1;
-             apStarted = false;
-             connected = true;
+        if (!connected && status == WL_CONNECTED)
+        {
+            LOGF("Connected successfully to wireless network, IP: %s.\n", WiFi.localIP().toString().c_str());
+            lastConnectionError = -1;
+            apStarted = false;
+            connected = true;
 
-             LOGN("Disabling AP.");
+            LOGN("Disabling AP.");
 #ifdef ESP32
-             WiFi.mode(WIFI_MODE_STA);
+            WiFi.mode(WIFI_MODE_STA);
 #elif ESP8266
              WiFi.mode(WIFI_AP_STA);
 #endif
-         }
+        }
     }
 
     /**
      * Default EnvVarStorage subclass for the library, will store all environment variables in a LittleFS text file.
      * File path is defined by the class's constructor argument.
      */
-    class LittleFSEnvVarStorage : public EnvVarStorage {
+    class LittleFSEnvVarStorage : public EnvVarStorage
+    {
     public:
         /**
          * @param filePath - path to the file where the environment variables will be saved.
          */
-        LittleFSEnvVarStorage(const String filePath) : filePath(filePath) {};
+        LittleFSEnvVarStorage(const String filePath) : filePath(filePath)
+        {
+        };
 
-        void saveVars(ESP_CONFIG_PAGE::EnvVar **toStore, uint8_t count) override {
+        void saveVars(ESP_CONFIG_PAGE::EnvVar** toStore, uint8_t count) override
+        {
             int size = envSize() + 32;
             char buf[size];
             strcpy(buf, "");
 
-            for (uint8_t i = 0; i < count; i++) {
-                EnvVar *ev = toStore[i];
-                if (ev == NULL) {
+            for (uint8_t i = 0; i < count; i++)
+            {
+                EnvVar* ev = toStore[i];
+                if (ev == NULL)
+                {
                     break;
                 }
 
@@ -956,8 +1089,10 @@ namespace ESP_CONFIG_PAGE {
             file.close();
         }
 
-        uint8_t countVars() override {
-            if (!LittleFS.exists(filePath)) {
+        uint8_t countVars() override
+        {
+            if (!LittleFS.exists(filePath))
+            {
                 return 0;
             }
 
@@ -968,8 +1103,10 @@ namespace ESP_CONFIG_PAGE {
             return ESP_CONFIG_PAGE::countChar(content.c_str(), ';');
         }
 
-        void recoverVars(std::shared_ptr<ESP_CONFIG_PAGE::EnvVar> recovered[]) override {
-            if (!LittleFS.exists(filePath)) {
+        void recoverVars(std::shared_ptr<ESP_CONFIG_PAGE::EnvVar> recovered[]) override
+        {
+            if (!LittleFS.exists(filePath))
+            {
                 return;
             }
 
@@ -980,10 +1117,12 @@ namespace ESP_CONFIG_PAGE {
             std::shared_ptr<char[]> split[count];
             getValueSplit(content.c_str(), ';', split);
 
-            for (uint8_t i = 0; i < count; i++) {
+            for (uint8_t i = 0; i < count; i++)
+            {
                 uint8_t varStrCount = countChar(split[i].get(), ':');
 
-                if (varStrCount < 2) {
+                if (varStrCount < 2)
+                {
                     continue;
                 }
 
@@ -1005,7 +1144,6 @@ namespace ESP_CONFIG_PAGE {
     private:
         const String filePath;
     };
-
 }
 
 #endif //DX_ESP_CONFIG_PAGE_H
