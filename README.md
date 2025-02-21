@@ -224,6 +224,87 @@ void loop() {
 
 ![Image depicting the settings web page, containing an action button.](https://raw.githubusercontent.com/davirxavier/esp-config-page/refs/heads/main/images/actions.png?raw=true)
 
+### Logging Module
+
+With this module, you can monitor the logs emitted by your board directly by the web interface using websockets, without the need to connect your board to a computer.
+
+To use this module, you will need to include the https://github.com/ESP32Async/ESPAsyncWebServer library in your project. Just add the github link to your lib_deps if you are using platformio.
+
+To start, you will need to create an instance of the ConfigPageSerial class, this class will function exactly the same as the original Arduino Serial, but all prints made with it will appear in the board's serial and will be shown on the configuration webpage. Call begin with your desired baud rate the same way you would with the original Arduino's Serial class
+
+After that, to enable logging on the webpage, will you need to call the enableLogging function, passing as arguments the desired username and password that will be used to authenticate the websocket connection between your browser and the board, as well as the ConfigPageSerial instance you created before.
+
+If you want, you can also call the setLogRetention function to enable log retention in flash storage. Things that are logged will be saved to the board's LittleFS filesystem, in the file you passed as parameter to the function. The file will be cleared if its size exceeds the maximum size limit that is passed to the function.
+
+````c++
+#include <Arduino.h>
+#include "esp-config-page.h"
+#include "esp-config-page-logging.h"
+
+// Webserver instance
+ESP_CONFIG_PAGE::WEBSERVER_T server(80);
+
+// Web serial instance
+ESP_CONFIG_PAGE_LOGGING::ConfigPageSerial webserial;
+
+unsigned long last = 0;
+
+void setup() {
+    webserial.begin(115200);
+    delay(2500);
+
+    // Set the config page serial (optional, will show all config page logs on the webpage as well)
+    ESP_CONFIG_PAGE::setSerial(&webserial);
+
+    // ESP_CONFIG_PAGE::setSerial(&webserial);
+    // Set AP SSID and password for when the board can't connect to your network
+    ESP_CONFIG_PAGE::setAPConfig("ESP32-TEST", "drx13246");
+
+    // Try to reconnect automatically if you already configured your board
+    ESP_CONFIG_PAGE::tryConnectWifi(false, 5000);
+
+    ESP_CONFIG_PAGE::addEnvVar(new ESP_CONFIG_PAGE::EnvVar("teste", ""));
+    ESP_CONFIG_PAGE::addEnvVar(new ESP_CONFIG_PAGE::EnvVar("teste2", ""));
+    ESP_CONFIG_PAGE::setAndUpdateEnvVarStorage(new ESP_CONFIG_PAGE::LittleFSEnvVarStorage("/env.cfg"));
+
+    // Setup webpage function
+    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST3");
+
+    ESP_CONFIG_PAGE::addCustomAction("Restart", [](ESP_CONFIG_PAGE::WEBSERVER_T &server)
+    {
+        ESP.restart();
+        return true;
+    });
+
+    // Begin webserver
+    server.begin();
+
+    // Enable logging module
+    ESP_CONFIG_PAGE_LOGGING::enableLogging("admin", "admin", webserial);
+
+    // Enable log retention with 1kb of maximum log size (optional)
+    ESP_CONFIG_PAGE_LOGGING::setLogRetention("/logs.txt", 1000);
+}
+
+void loop() {
+    // Call update every loop
+    server.handleClient();
+    ESP_CONFIG_PAGE::loop();
+    ESP_CONFIG_PAGE_LOGGING::loop();
+
+    if (millis() - last > 1000)
+    {
+        // Log anything
+        webserial.println("test");
+        last = millis();
+    }
+}
+````
+
+This will show all logs made with the ConfigPageSerial instance in the webpage's logging tab, like so:
+
+![Image depicting the logging web page.](https://raw.githubusercontent.com/davirxavier/esp-config-page/refs/heads/main/images/logging.png?raw=true)
+
 ### Change Enabled Modules
 
 All configuration modules will be enabled by default, but you can define what modules you want to be enabled to save storage by using the build script included with this package.

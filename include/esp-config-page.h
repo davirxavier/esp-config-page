@@ -6,6 +6,7 @@
 #define DX_ESP_CONFIG_PAGE_H
 
 #include <Arduino.h>
+#include "esp-config-defines.h"
 #include "config-html.h"
 #include "LittleFS.h"
 
@@ -19,9 +20,7 @@
 #include "LittleFS.h"
 #include "WiFiUdp.h"
 
-#define ENABLE_LOGGING
-
-#ifdef ENABLE_LOGGING
+#ifdef ENABLE_ECPLOG
 #define LOGH() Serial.print("[ESP-CONFIG-PAGE] ")
 #define LOG(str) LOGH(); ESP_CONFIG_PAGE::serial->print(str)
 #define LOGN(str) LOGH(); ESP_CONFIG_PAGE::serial->println(str)
@@ -60,6 +59,7 @@ namespace ESP_CONFIG_PAGE
         WIFI_SET
     };
 
+#ifdef ENABLE_ENV
     struct EnvVar
     {
         /**
@@ -84,30 +84,37 @@ namespace ESP_CONFIG_PAGE
         virtual uint8_t countVars();
         virtual void recoverVars(std::shared_ptr<ESP_CONFIG_PAGE::EnvVar> envVars[]);
     };
+#endif
 
+#ifdef ENABLE_CA
     struct CustomAction
     {
         const String key;
         std::function<void(WEBSERVER_T& server)> handler;
     };
+#endif
 
     Stream* serial = &Serial;
 
+#ifdef ENABLE_ENV
     EnvVar** envVars;
     uint8_t envVarCount = 0;
     uint8_t maxEnvVars = 0;
+    void (*saveEnvVarsCallback)(EnvVar** envVars, uint8_t envVarCount) = NULL;
+    EnvVarStorage* envVarStorage = NULL;
+#endif
 
+#ifdef ENABLE_CA
     CustomAction** customActions;
     uint8_t customActionsCount;
     uint8_t maxCustomActions;
+#endif
 
     String name;
-    void (*saveEnvVarsCallback)(EnvVar** envVars, uint8_t envVarCount) = NULL;
-    EnvVarStorage* envVarStorage = NULL;
-
     const char escapeChars[] = {':', ';', '+', '\0'};
     const char escaper = '|';
 
+#ifdef ENABLE_WIRELESS
     String wifiSsid = "";
     String wifiPass = "";
     String apSsid = "ESP";
@@ -117,6 +124,7 @@ namespace ESP_CONFIG_PAGE
     int lastConnectionError = -1;
     bool apStarted = false;
     bool connected = false;
+#endif
 
     int sizeWithEscaping(const char* str)
     {
@@ -135,6 +143,7 @@ namespace ESP_CONFIG_PAGE
         return escapedCount + len + 1;
     }
 
+#ifdef ENABLE_CA
     int caSize()
     {
         int infoSize = 0;
@@ -147,7 +156,14 @@ namespace ESP_CONFIG_PAGE
 
         return infoSize;
     }
+#else
+    int caSize()
+    {
+        return 0;
+    }
+#endif
 
+#ifdef ENABLE_ENV
     int envSize()
     {
         int infoSize = 0;
@@ -160,6 +176,12 @@ namespace ESP_CONFIG_PAGE
 
         return infoSize;
     }
+#else
+    int envSize()
+    {
+        return 0;
+    }
+#endif
 
     void unescape(char buf[], const char* source)
     {
@@ -288,6 +310,7 @@ namespace ESP_CONFIG_PAGE
     {
         LOGN("Entered config page setup.");
 
+#ifdef ENABLE_FILES
 #ifdef ESP32
         if (!LittleFS.begin(false /* false: Do not format if mount failed */))
         {
@@ -304,9 +327,13 @@ namespace ESP_CONFIG_PAGE
 #elif ESP8266
         LittleFS.begin();
 #endif
+#endif
 
+#ifdef ENABLE_CA
         customActionsCount = 0;
         maxCustomActions = 0;
+#endif
+
         name = nodeName;
 
         server.on(F("/config"), HTTP_GET, [&server, username, password]()
@@ -319,16 +346,21 @@ namespace ESP_CONFIG_PAGE
             handleRequest(server, username, password, INFO);
         });
 
+#ifdef ENABLE_ENV
         server.on(F("/config/save"), HTTP_POST, [&server, username, password]()
         {
             handleRequest(server, username, password, SAVE);
         });
+#endif
 
+#ifdef ENABLE_CA
         server.on(F("/config/customa"), HTTP_POST, [&server, username, password]()
         {
             handleRequest(server, username, password, CUSTOM_ACTIONS);
         });
+#endif
 
+#ifdef ENABLE_FILES
         server.on(F("/config/files"), HTTP_POST, [&server, username, password]()
         {
             handleRequest(server, username, password, FILES);
@@ -343,7 +375,9 @@ namespace ESP_CONFIG_PAGE
         {
             handleRequest(server, username, password, DELETE_FILE);
         });
+#endif
 
+#ifdef ENABLE_OTA
         server.on(F("/config/update/firmware"), HTTP_POST, [&server, username, password]()
                   {
                       handleRequest(server, username, password, OTA_END);
@@ -359,7 +393,9 @@ namespace ESP_CONFIG_PAGE
                   {
                       handleRequest(server, username, password, OTA_WRITE_FILESYSTEM);
                   });
+#endif
 
+#ifdef ENABLE_WIRELESS
         server.on(F("/config/wifi"), HTTP_GET, [&server, username, password]()
         {
             handleRequest(server, username, password, WIFI_LIST);
@@ -369,6 +405,7 @@ namespace ESP_CONFIG_PAGE
         {
             handleRequest(server, username, password, WIFI_SET);
         });
+#endif
 
         server.onNotFound([&server]()
         {
@@ -380,6 +417,7 @@ namespace ESP_CONFIG_PAGE
         LOGN("Config page setup complete.");
     }
 
+#ifdef ENABLE_ENV
     /**
      * Set the type persistent environment variables storage for the library, as well as use the instance to recover any saved variables (if there are any).
      *
@@ -460,7 +498,9 @@ namespace ESP_CONFIG_PAGE
         envVars[envVarCount] = ev;
         envVarCount++;
     }
+#endif
 
+#ifdef ENABLE_CA
     /**
      * Adds a custom action to the webpage.
      *
@@ -480,7 +520,9 @@ namespace ESP_CONFIG_PAGE
         customActions[customActionsCount] = new CustomAction{key, handler};
         customActionsCount++;
     }
+#endif
 
+#ifdef ENABLE_OTA
     const char* getUpdateErrorStr()
     {
 #ifdef ESP32
@@ -493,7 +535,10 @@ namespace ESP_CONFIG_PAGE
     void ota(WEBSERVER_T& server, String username, String password, REQUEST_TYPE reqType)
     {
         LOGN("OTA upload receiving, starting update process.");
+
+#ifdef ENABLE_LOGGING
         ESP_CONFIG_PAGE_LOGGING::disableLogging();
+#endif
 
         HTTPUpload& upload = server.upload();
         int command = U_FLASH;
@@ -559,7 +604,9 @@ namespace ESP_CONFIG_PAGE
         }
         yield();
     }
+#endif
 
+#ifdef ENABLE_WIRELESS
     /**
      * Returns true if the wifi connection is ready or false if otherwise.
      * @return boolean
@@ -638,6 +685,7 @@ namespace ESP_CONFIG_PAGE
         apPass = pass;
         WiFi.softAPConfig(apIp, apIp, IPAddress(255, 255, 255, 0));
     }
+#endif
 
     inline void handleRequest(WEBSERVER_T& server, String username, String password, REQUEST_TYPE reqType)
     {
@@ -657,6 +705,7 @@ namespace ESP_CONFIG_PAGE
             server.sendHeader("Content-Encoding", "gzip");
             server.send_P(200, "text/html", (const char*)ESP_CONFIG_HTML, ESP_CONFIG_HTML_LEN);
             break;
+#ifdef ENABLE_FILES
         case FILES:
             {
                 String path = server.arg("plain");
@@ -730,6 +779,8 @@ namespace ESP_CONFIG_PAGE
                 server.send(200);
                 break;
             }
+#endif
+#ifdef ENABLE_CA
         case CUSTOM_ACTIONS:
             {
                 if (customActionsCount == 0)
@@ -758,6 +809,8 @@ namespace ESP_CONFIG_PAGE
                 }
                 break;
             }
+#endif
+#ifdef ENABLE_ENV
         case SAVE:
             {
                 if (envVarCount == 0)
@@ -826,6 +879,8 @@ namespace ESP_CONFIG_PAGE
 #endif
                 break;
             }
+#endif
+#ifdef ENABLE_OTA
         case OTA_END:
             {
                 server.sendHeader("Connection", "close");
@@ -844,6 +899,7 @@ namespace ESP_CONFIG_PAGE
                 ota(server, username, password, OTA_WRITE_FILESYSTEM);
                 break;
             }
+#endif
         case INFO:
             {
 #ifdef ESP32
@@ -875,6 +931,7 @@ namespace ESP_CONFIG_PAGE
                 strcat(buf, freeHeap.c_str());
                 strcat(buf, "+");
 
+#ifdef ENABLE_ENV
                 for (uint8_t i = 0; i < envVarCount; i++)
                 {
                     EnvVar* ev = envVars[i];
@@ -890,8 +947,11 @@ namespace ESP_CONFIG_PAGE
                     strcat(buf, bufVal);
                     strcat(buf, ":;");
                 }
+#endif
+
                 strcat(buf, "+");
 
+#ifdef ENABLE_CA
                 for (uint8_t i = 0; i < customActionsCount; i++)
                 {
                     CustomAction* ca = customActions[i];
@@ -902,6 +962,7 @@ namespace ESP_CONFIG_PAGE
                     strcat(buf, bufKey);
                     strcat(buf, ";");
                 }
+#endif
 
                 strcat(buf, "+");
                 strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP ? "0" : "1");
@@ -911,6 +972,7 @@ namespace ESP_CONFIG_PAGE
                 server.send(200, "text/plain", buf);
                 break;
             }
+#ifdef ENABLE_WIRELESS
         case WIFI_LIST:
             {
                 int count = WiFi.scanNetworks();
@@ -998,6 +1060,7 @@ namespace ESP_CONFIG_PAGE
                 tryConnectWifi(true);
                 break;
             }
+#endif
         }
     }
 
@@ -1006,6 +1069,7 @@ namespace ESP_CONFIG_PAGE
      */
     void loop()
     {
+#ifdef ENABLE_WIRELESS
         int status = WiFi.status();
 
         if (!apStarted && lastConnectionError != -1)
@@ -1038,8 +1102,10 @@ namespace ESP_CONFIG_PAGE
              WiFi.mode(WIFI_AP_STA);
 #endif
         }
+#endif
     }
 
+#ifdef ENABLE_ENV
     /**
      * Default EnvVarStorage subclass for the library, will store all environment variables in a LittleFS text file.
      * File path is defined by the class's constructor argument.
@@ -1144,6 +1210,7 @@ namespace ESP_CONFIG_PAGE
     private:
         const String filePath;
     };
+#endif
 }
 
 #endif //DX_ESP_CONFIG_PAGE_H
