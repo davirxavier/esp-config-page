@@ -1,6 +1,6 @@
 {
   "name": "esp-config-page",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "keywords": "wifi,wi-fi,esp,esp8266,esp32,espressif8266,espressif32,nodemcu,wemos,arduino",
   "description": "Dynamic and modular configuration webpage for ESP8266 and ESP32 boards using the arduino framework. Features automatic wi-fi setup, OTA updates, web triggered actions, environment variables configuration, logging monitoring and more.",
   "frameworks": "arduino",

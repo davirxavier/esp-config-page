@@ -228,6 +228,8 @@ void loop() {
 
 With this module, you can monitor the logs emitted by your board directly by the web interface using websockets, without the need to connect your board to a computer.
 
+To use this module, you will need to include the https://github.com/ESP32Async/ESPAsyncWebServer library in your project. Just add the github link to your lib_deps if you are using platformio.
+
 To start, you will need to create an instance of the ConfigPageSerial class, this class will function exactly the same as the original Arduino Serial, but all prints made with it will appear in the board's serial and will be shown on the configuration webpage. Call begin with your desired baud rate the same way you would with the original Arduino's Serial class
 
 After that, to enable logging on the webpage, will you need to call the enableLogging function, passing as arguments the desired username and password that will be used to authenticate the websocket connection between your browser and the board, as well as the ConfigPageSerial instance you created before.
