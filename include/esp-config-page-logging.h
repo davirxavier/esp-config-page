@@ -1,6 +1,9 @@
 #ifndef DX_ESP_CONFIG_PAGE_LOGGING_H
 #define DX_ESP_CONFIG_PAGE_LOGGING_H
 
+#include "esp-config-defines.h"
+
+#ifdef ENABLE_ECPLOG
 #include "Arduino.h"
 #include "ESPAsyncWebServer.h"
 
@@ -269,4 +272,5 @@ namespace ESP_CONFIG_PAGE_LOGGING
     }
 }
 
+#endif
 #endif //DX_ESP_CONFIG_PAGE_LOGGING_H
