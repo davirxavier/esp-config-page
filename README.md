@@ -258,7 +258,7 @@ void setup() {
 
     // ESP_CONFIG_PAGE::setSerial(&webserial);
     // Set AP SSID and password for when the board can't connect to your network
-    ESP_CONFIG_PAGE::setAPConfig("ESP32-TEST", "drx13246");
+    ESP_CONFIG_PAGE::setAPConfig("ESP32-TEST", "123");
 
     // Try to reconnect automatically if you already configured your board
     ESP_CONFIG_PAGE::tryConnectWifi(false, 5000);
