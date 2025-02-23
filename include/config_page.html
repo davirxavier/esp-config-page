@@ -729,9 +729,6 @@
                 const usedSpace = split[2];
                 const spaceTotal = split[3];
                 const freeHeap = split[4];
-                const env = split[5];
-                const actions = split[6];
-                const hasWifi = split[7];
 
                 document.title = name + ' - Config';
                 document.getElementById('text-id').innerText = name;
@@ -739,67 +736,83 @@
                 document.getElementById('text-space-free').innerText = usedSpace;
                 document.getElementById('text-space-total').innerText = spaceTotal;
                 document.getElementById('text-ram').innerText = freeHeap;
-
-                <!--MARKER-ENV-->
-                const envCont = document.getElementById('env-container');
-                envCont.innerHTML = '';
-
-                const envSplit = splitEscaped(env, ';');
-                for (const keyValue of envSplit) {
-                    const kvSplit = splitEscaped(keyValue, ':');
-                    const key = unescapeStr(kvSplit[0]);
-                    const value = unescapeStr(kvSplit[1]);
-
-                    if (!key || key === '') {
-                        continue;
-                    }
-
-                    const id = 'input-' + key;
-
-                    const mainElement = document.createElement('div');
-                    mainElement.style = 'display: flex; align-items: center; justify-content: space-between;';
-
-                    const label = document.createElement('label');
-                    label.style = 'margin-right: 1rem';
-                    label.for = id;
-                    label.innerText = key;
-                    mainElement.appendChild(label);
-
-                    const input = document.createElement('input');
-                    input.setAttribute('autocomplete', 'off');
-                    input.classList.add('env-input');
-                    input.style = 'flex: 1;';
-                    input.value = value;
-                    input.id = id;
-                    mainElement.appendChild(input);
-
-                    envCont.appendChild(mainElement);
-                }
-                <!--END-ENV-->
-
-                <!--MARKER-CA-->
-                const caCont = document.getElementById('custom-actions-div');
-                caCont.innerHTML = '';
-
-                const caSplit = splitEscaped(actions, ';');
-                for (const caEscaped of caSplit) {
-                    const ca = unescapeStr(caEscaped);
-
-                    if (ca === '') {
-                        continue;
-                    }
-
-                    const button = document.createElement('button');
-                    button.classList.add('ca-btn');
-                    button.onclick = () => customAction(ca);
-                    button.innerText = ca;
-                    caCont.appendChild(button);
-                }
-                <!--END-CA-->
             } else {
                 alert('Error while trying to fetch info from controller.')
             }
         });
+
+        <!--MARKER-ENV-->
+        doRequest('env', undefined, 'GET', (success, response) => {
+            if (!success) {
+                return;
+            }
+
+            const envCont = document.getElementById('env-container');
+            envCont.innerHTML = '';
+
+            const envSplit = splitEscaped(response, ';');
+            for (const keyValue of envSplit) {
+                const kvSplit = splitEscaped(keyValue, ':');
+                const key = unescapeStr(kvSplit[0]);
+                const value = unescapeStr(kvSplit[1]);
+
+                if (!key || key === '') {
+                    continue;
+                }
+
+                const id = 'input-' + key;
+
+                const mainElement = document.createElement('div');
+                mainElement.style = 'display: flex; align-items: center; justify-content: space-between;';
+
+                const label = document.createElement('label');
+                label.style = 'margin-right: 1rem';
+                label.for = id;
+                label.innerText = key;
+                mainElement.appendChild(label);
+
+                const input = document.createElement('input');
+                input.setAttribute('autocomplete', 'off');
+                input.classList.add('env-input');
+                input.style = 'flex: 1;';
+                input.value = value;
+                input.id = id;
+                mainElement.appendChild(input);
+
+                envCont.appendChild(mainElement);
+            }
+
+            if (currentModule == moduleTypes.ENV_VARS) {
+                moduleTypes.ENV_VARS.onChange();
+            }
+        });
+        <!--END-ENV-->
+
+        <!--MARKER-CA-->
+        doRequest('customa', undefined, 'GET', (success, response) => {
+            const caCont = document.getElementById('custom-actions-div');
+            caCont.innerHTML = '';
+
+            const caSplit = splitEscaped(response, ';');
+            for (const caEscaped of caSplit) {
+                const ca = unescapeStr(caEscaped);
+
+                if (ca === '') {
+                    continue;
+                }
+
+                const button = document.createElement('button');
+                button.classList.add('ca-btn');
+                button.onclick = () => customAction(ca);
+                button.innerText = ca;
+                caCont.appendChild(button);
+            }
+
+            if (currentModule == moduleTypes.CUSTOM_ACTIONS) {
+                moduleTypes.CUSTOM_ACTIONS.onChange();
+            }
+        });
+        <!--END-CA-->
     }
 
     updateInfo();
