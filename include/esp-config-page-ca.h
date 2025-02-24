@@ -80,32 +80,27 @@ namespace ESP_CONFIG_PAGE
         customActionsCount++;
     }
 
+    inline void getCa()
+    {
+        char buf[caSize()+1];
+        for (uint8_t i = 0; i < customActionsCount; i++)
+        {
+            CustomAction* ca = customActions[i];
+
+            char bufKey[sizeWithEscaping(ca->key.c_str())];
+            escape(bufKey, ca->key.c_str());
+
+            strcat(buf, bufKey);
+            strcat(buf, ";");
+        }
+
+        server->send(200, "text/plain", buf);
+    }
+
     inline void enableCustomActionsModule()
     {
-        server->on(F("/config/customa"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            tiggerCustomAction();
-        });
-
-        server->on(F("/config/customa"), HTTP_GET, []()
-        {
-            VALIDATE_AUTH();
-
-            char buf[caSize()+1];
-            for (uint8_t i = 0; i < customActionsCount; i++)
-            {
-                CustomAction* ca = customActions[i];
-
-                char bufKey[sizeWithEscaping(ca->key.c_str())];
-                escape(bufKey, ca->key.c_str());
-
-                strcat(buf, bufKey);
-                strcat(buf, ";");
-            }
-
-            server->send(200, "text/plain", buf);
-        });
+        REGISTER_SERVER_METHOD(F("/config/customa"), HTTP_POST, tiggerCustomAction);
+        REGISTER_SERVER_METHOD(F("/config/customa"), HTTP_GET, getCa);
     }
 }
 

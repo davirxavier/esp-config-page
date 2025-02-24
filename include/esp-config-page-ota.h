@@ -7,7 +7,7 @@
 
 namespace ESP_CONFIG_PAGE
 {
-    const char* getUpdateErrorStr()
+    inline const char* getUpdateErrorStr()
     {
 #ifdef ESP32
         return Update.errorString();
@@ -16,7 +16,7 @@ namespace ESP_CONFIG_PAGE
 #endif
     }
 
-    void ota(bool isFilesystem)
+    inline void ota(bool isFilesystem)
     {
         LOGN("OTA upload receiving, starting update process.");
 
@@ -93,6 +93,7 @@ namespace ESP_CONFIG_PAGE
     {
         server->sendHeader("Connection", "close");
         server->send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+        LOGN("OTA update finished, restarting.");
         delay(100);
         ESP.restart();
     }

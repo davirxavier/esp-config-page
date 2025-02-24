@@ -8,9 +8,11 @@
 #include "ESP8266WebServer.h"
 #endif
 
+#include "LittleFS.h"
 #include "std-util.h"
 
 #define VALIDATE_AUTH() if (!ESP_CONFIG_PAGE::validateAuth()) return
+#define REGISTER_SERVER_METHOD(path, method, fn) VALIDATE_AUTH(); server->on(path, method, fn)
 
 #define ENABLE_LOGGING
 #ifdef ENABLE_LOGGING
@@ -36,6 +38,37 @@ namespace ESP_CONFIG_PAGE
     String username;
     String password;
     String nodeName;
+
+    inline unsigned int getMaxLineLength(const char* str) {
+        unsigned int maxLength = 0;
+        unsigned int currentLength = 0;
+
+        unsigned int len = strlen(str);
+        for (unsigned int i = 0; i < len; i++)
+        {
+            const char c = str[i];
+            if (c == '\n' || c == '\r')
+            {
+                if (currentLength > maxLength)
+                {
+                    maxLength = currentLength;
+                    break;
+                }
+
+                currentLength = 0;
+                if (c == '\r' && i < len-1 && str[i+1] == '\n')
+                {
+                    i++;
+                }
+            }
+            else
+            {
+                currentLength++;
+            }
+        }
+
+        return maxLength;
+    }
 
     inline bool validateAuth()
     {
@@ -181,6 +214,10 @@ namespace ESP_CONFIG_PAGE
         }
     }
 
+    /**
+     * Sets the esp-config-page serial for printing.
+     * @param toSet serial to set.
+     */
     inline void setSerial(Stream* toSet)
     {
         serial = toSet;
@@ -194,9 +231,131 @@ namespace ESP_CONFIG_PAGE
         ACTIONS,
         ENVIRONMENT,
         LOGGING,
+        ATTRIBUTES,
     };
     Modules *enabledModules = nullptr;
     uint8_t enabledModulesCount = 0;
+
+    /**
+     * Free dynamically allocated array of arrays.
+     */
+    inline void freeArr(void** arr, unsigned int count)
+    {
+        if (arr == nullptr)
+        {
+            return;
+        }
+
+        for (unsigned int i = 0; i < count; i++)
+        {
+            if (arr[i] != nullptr)
+            {
+                free(arr[i]);
+            }
+        }
+        free(arr);
+    }
+
+    /**
+     * Storage class for any key value pair.
+     */
+    class KeyValueStorage
+    {
+    public:
+        virtual ~KeyValueStorage() = default;
+        KeyValueStorage() {}
+
+        /**
+         * Save a key-value pair in storage.
+         */
+        virtual void save(const char *key, const char *value);
+
+        /**
+         * Recover a value by key in storage.
+         * @return recovered value or nullptr if there are none. ALWAYS FREE() THE CHAR* AFTER YOU ARE DONE USING IT.
+         */
+        virtual char* recover(const char *key);
+    };
+
+    /**
+     * Default EnvVarStorage subclass for the library, will store all environment variables in a LittleFS text file.
+     * File path is defined by the class's constructor argument.
+     */
+    class LittleFSKeyValueStorage : public KeyValueStorage
+    {
+    public:
+        ~LittleFSKeyValueStorage() override
+        {
+            free(this->folderPath);
+        }
+
+        /**
+         * Instantiate storage.
+         * @param folderPath Path to the folder to save the values.
+         */
+        LittleFSKeyValueStorage(const char *folderPath)
+        {
+#ifdef ESP32
+            bool pathStartsWithSlash = folderPath[0] == '/';
+            this->folderPath = (char*) malloc(strlen(folderPath) + (pathStartsWithSlash ? 0 : 1) + 1);
+            this->folderPath[0] = '/';
+            strcpy(pathStartsWithSlash ? this->folderPath : this->folderPath+1, pathStartsWithSlash ? folderPath+1 : folderPath);
+            LOGF("Key value storage path: %s\n", this->folderPath);
+#elif ESP8266
+            this->folderPath = (char*) malloc(strlen(folderPath) + 1);
+            strcpy(this->folderPath, folderPath);
+#endif
+        }
+
+        void save(const char *key, const char *value) override
+        {
+            char filePath[filePathLength(key)];
+            getFilePath(key, filePath);
+            LOGF("Saving value for key %s in path %s.\n", key, filePath);
+
+            File file = LittleFS.open(filePath, "w");
+
+#ifdef ESP32
+            file.print(value);
+#elif ESP8266
+            file.write(value);
+#endif
+
+            file.close();
+        }
+
+        char* recover(const char *key) override
+        {
+            char filePath[filePathLength(key)];
+            getFilePath(key, filePath);
+            LOGF("Recovering value for key %s in path %s.\n", key, filePath);
+
+            if (!LittleFS.exists(filePath))
+            {
+                return nullptr;
+            }
+
+            File file = LittleFS.open(filePath, "r");
+            const char *fileStr = file.readString().c_str();
+            file.close();
+
+            return strcpy((char*) malloc(strlen(fileStr)+1), fileStr);
+        }
+
+    protected:
+        unsigned int filePathLength(const char *key)
+        {
+            return strlen(key) + strlen(this->folderPath) + 2;
+        }
+
+        void getFilePath(const char *key, char *outPath)
+        {
+            sprintf(outPath, "%s/%s", this->folderPath, key);
+        }
+    private:
+        char *folderPath;
+    };
+
 }
 
 #endif
