@@ -195,8 +195,8 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        REGISTER_SERVER_METHOD(F("/config/wifi"), HTTP_GET, wifiGet);
-        REGISTER_SERVER_METHOD(F("/config/wifi"), HTTP_POST, wifiSet);
+        addServerHandler((char*) F("/config/wifi"), HTTP_GET, wifiGet);
+        addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
     }
 
     inline void wirelessLoop()

@@ -313,8 +313,8 @@ namespace ESP_CONFIG_PAGE
 
     inline void enableAttributesModule()
     {
-        REGISTER_SERVER_METHOD("/config/attributes", HTTP_GET, getAttributes);
-        REGISTER_SERVER_METHOD("/config/attributes", HTTP_POST, setAttribute);
+        addServerHandler((char*) "/config/attributes", HTTP_GET, getAttributes);
+        addServerHandler((char*) "/config/attributes", HTTP_POST, setAttribute);
     }
 }
 

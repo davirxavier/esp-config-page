@@ -472,7 +472,7 @@
 
         if (window.confirm('Save environment variables?')) {
             let str = '';
-            Object.keys(obj).forEach(key => str += `${escapeStr(key)}:${escapeStr(obj[key])}:;`);
+            Object.keys(obj).forEach(key => str += `${key}\n${obj[key]}\n`);
             doRequest('save', str, "POST", (success, res) => {
                 alert(success ? 'Environment saved successfully!' : `Error while saving: ${res}`);
                 location.reload();
@@ -753,11 +753,15 @@
             const envSplit = splitEscaped(response, ';');
             for (const keyValue of envSplit) {
                 const kvSplit = splitEscaped(keyValue, ':');
-                const key = unescapeStr(kvSplit[0]);
+                let key = unescapeStr(kvSplit[0]);
                 const value = unescapeStr(kvSplit[1]);
 
                 if (!key || key === '') {
                     continue;
+                }
+
+                if (key.startsWith("\n")) {
+                    key = key.substring(1);
                 }
 
                 const id = 'input-' + key;

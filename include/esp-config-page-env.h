@@ -24,14 +24,7 @@ namespace ESP_CONFIG_PAGE
          * @param key - environment variable name and search key, should be unique between all environment variables.
          * @param value - initial value for the environment variable.
          */
-        EnvVar(const char *key, char *value) : key(key)
-        {
-            if (value == nullptr)
-            {
-                value = (char*) malloc(1);
-                value[0] = 0;
-            }
-        };
+        EnvVar(const char *key, char *value) : key(key), value(value){}
         const char *key;
         char *value;
     };
@@ -39,7 +32,6 @@ namespace ESP_CONFIG_PAGE
     EnvVar** envVars;
     uint8_t envVarCount = 0;
     uint8_t maxEnvVars = 0;
-    void (*saveEnvVarsCallback)(EnvVar** envVars, uint8_t envVarCount) = nullptr;
     KeyValueStorage* envVarStorage = nullptr;
 
     inline int envSize()
@@ -66,25 +58,6 @@ namespace ESP_CONFIG_PAGE
 
         if (envVarStorage != nullptr)
         {
-            LOGN("Env var storage is set, configuring env vars.");
-#ifdef ESP32
-            if (!LittleFS.begin(false /* false: Do not format if mount failed */))
-            {
-                LOGN("Failed to mount LittleFS");
-                if (!LittleFS.begin(true /* true: format */))
-                {
-                    LOGN("Failed to format LittleFS");
-                }
-                else
-                {
-                    LOGN("LittleFS formatted successfully");
-                    ESP.restart();
-                }
-            }
-#elif ESP8266
-            LittleFS.begin();
-#endif
-
             LOGN("Recoving env vars from storage.");
             for (uint8_t i = 0; i < envVarCount; i++)
             {
@@ -139,61 +112,44 @@ namespace ESP_CONFIG_PAGE
         }
 
         String body = server->arg("plain");
+        unsigned int maxLineLength = getMaxLineLength(body.c_str());
+        char currentKey[maxLineLength];
+        char buf[maxLineLength];
+        unsigned int currentChar = 0;
+        unsigned int bodyLen = body.length();
+        bool isKey = true;
 
-        uint8_t size = countChar(body.c_str(), ';');
-        std::shared_ptr<char[]> split[size];
-        getValueSplit(body.c_str(), ';', split);
-
-        for (uint8_t i = 0; i < size; i++)
+        for (unsigned int i = 0; i < bodyLen; i++)
         {
-            uint8_t keyAndValueSize = countChar(split[i].get(), ':');
+            char c = body[i];
 
-            if (keyAndValueSize < 2)
+            if (c == '\n' || c == '\r')
             {
-                continue;
+                buf[currentChar] = 0;
+
+                if (isKey)
+                {
+                    strcpy(currentKey, buf);
+                }
+                else
+                {
+                    for (uint8_t j = 0; j < envVarCount; j++)
+                    {
+                        EnvVar *ev = envVars[j];
+                        if (ev != nullptr && strcmp(ev->key, currentKey) == 0)
+                        {
+                            envVarStorage->save(currentKey, buf);
+                        }
+                    }
+                }
+
+                isKey = !isKey;
+                currentChar = 0;
             }
-
-            std::shared_ptr<char[]> keyAndValue[keyAndValueSize];
-            getValueSplit(split[i].get(), ':', keyAndValue);
-
-            char key[strlen(keyAndValue[0].get())];
-            char newValue[strlen(keyAndValue[1].get())];
-
-            unescape(key, keyAndValue[0].get());
-            unescape(newValue, keyAndValue[1].get());
-
-            for (uint8_t j = 0; j < envVarCount; j++)
+            else
             {
-                EnvVar* ev = envVars[j];
-                if (ev == nullptr)
-                {
-                    break;
-                }
-
-                if (ev->key == key)
-                {
-                    ev->value = newValue;
-                    break;
-                }
-            }
-        }
-
-        if (saveEnvVarsCallback != nullptr)
-        {
-            saveEnvVarsCallback(envVars, envVarCount);
-        }
-
-        if (envVarStorage != nullptr)
-        {
-            for (uint8_t i = 0; i < envVarCount; i++)
-            {
-                EnvVar *ev = envVars[i];
-                if (ev == nullptr)
-                {
-                    continue;
-                }
-
-                envVarStorage->save(ev->key, ev->value);
+                buf[currentChar] = c;
+                currentChar++;
             }
         }
 
@@ -215,15 +171,22 @@ namespace ESP_CONFIG_PAGE
             EnvVar* ev = envVars[i];
 
             char bufKey[sizeWithEscaping(ev->key)];
-            char bufVal[sizeWithEscaping(ev->value)];
-
             escape(bufKey, ev->key);
-            escape(bufVal, ev->value);
 
             strcat(buf, bufKey);
             strcat(buf, ":");
-            strcat(buf, bufVal);
-            strcat(buf, ":;");
+
+            if (ev->value == nullptr)
+            {
+                strcat(buf, ":;");
+            }
+            else
+            {
+                char bufVal[sizeWithEscaping(ev->value)];
+                escape(bufVal, ev->value);
+                strcat(buf, bufVal);
+                strcat(buf, ":;");
+            }
         }
 
         server->send(200, "text/plain", buf);
@@ -231,8 +194,8 @@ namespace ESP_CONFIG_PAGE
 
     inline void enableEnvModule()
     {
-        REGISTER_SERVER_METHOD(F("/config/save"), HTTP_POST, saveEnv);
-        REGISTER_SERVER_METHOD(F("/config/env"), HTTP_GET, getEnv);
+        addServerHandler((char*) F("/config/save"), HTTP_POST, saveEnv);
+        addServerHandler((char*) F("/config/env"), HTTP_GET, getEnv);
     }
 }
 
