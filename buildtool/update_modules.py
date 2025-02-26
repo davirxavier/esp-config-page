@@ -1,8 +1,26 @@
 import minify_html
 import gzip
+import re
+import argparse
+
+modules = ['ota', 'wireless', 'ca', 'env', 'files']
+
+parser = argparse.ArgumentParser(prog="esp-config-page html build tool.",
+                                 description="Python script that can be used to manage the modules that will be included in the config page html.")
+
+for module in modules:
+    parser.add_argument("--" + module, required=False, action='store_true')
+
+args = parser.parse_args()
 
 with open('../include/config_page.html', encoding="utf-8") as f:
     read_data = f.read()
+
+    for e in args.__dict__:
+        v = args.__dict__[e]
+        if not v:
+            read_data = re.sub(f'<!--MARKER-{e.upper()}-->?(.*?)<!--END-{e.upper()}-->', '', read_data, flags=re.DOTALL)
+
     minified = minify_html.minify(read_data, minify_css=True, minify_js=True, remove_bangs=True,
                                   remove_processing_instructions=True)
 

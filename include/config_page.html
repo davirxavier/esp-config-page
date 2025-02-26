@@ -222,6 +222,7 @@
 <div id="modules">
     <p class="title-text" id="module-title" style="margin-top: 2rem; margin-bottom: 1.0rem;"></p>
 
+    <!--MARKER-OTA-->
     <div class="cont med screen-panel flex-center">
         <span class="loader" id="ota-loader" style="display: none;"></span>
 
@@ -247,7 +248,9 @@
 
         <input style="display: none" id="ota-file-input-f" type='file' name='update' onchange="onOtaUpload(true)" accept=".bin,.bin.gz">
     </div>
+    <!--END-OTA-->
 
+    <!--MARKER-WIRELESS-->
     <div id="wifi-config-cont" class="cont med screen-panel">
         <div class="flex-center">
             <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Refresh</button>
@@ -261,6 +264,7 @@
         <div id="wifi-list" class="cont med" style="margin: 1rem auto -1rem auto; gap: 0;">
         </div>
     </div>
+    <!--END-WIRELESS-->
 
     <div class="cont med screen-panel" id="file-nav">
         <div style="display: flex; align-items: center; justify-content: center;">
@@ -272,9 +276,12 @@
         </div>
     </div>
 
+    <!--MARKER-CA-->
     <div id="custom-actions-div" class="flex-center" style="width: 300px; margin: 2rem auto 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1rem;">
     </div>
+    <!--END-CA-->
 
+    <!--MARKER-ENV-->
     <div class="cont med" id="env-div">
         <div id="env-container" class="cont med flex-center">
         </div>
@@ -282,6 +289,7 @@
         <button class="small-btn flex-center" onclick="save()" style="margin-top: 2rem; width: fit-content; margin-left: auto; margin-right: auto">Save</button>
         <label style="margin: 0 auto 0 auto" id="status"></label>
     </div>
+    <!--END-ENV-->
 
     <p class="title-text" id="message" style="margin-top: 2rem; margin-bottom: 1.0rem; font-size: 0.93rem"></p>
 </div>
@@ -294,6 +302,7 @@
     <p class="title-text">FREE HEAP: <span id="text-ram" style="font-weight: bold"></span> bytes</p>
 </div>
 
+<!--MARKER-FILES-->
 <button id="delete-svg" class="icon-btn" title="Delete file">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M280-120q-33 0-56-23t-24-57v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23 57t-57 23H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
 </button>
@@ -306,6 +315,9 @@
 <button id="folder-svg" class="icon-btn" style="margin-right: 0.5rem;" title="Open directory">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M160-160q-33 0-56-23t-24-57v-480q0-33 24-56t56-24h240l80 80h320q33 0 57 24t23 56H447l-80-80H160v480l96-320h684L837-217q-8 26-29 42t-48 15H160Zm84-80h516l72-240H316l-72 240Zm0 0 72-240-72 240Zm-84-400v-80 80Z"/></svg>
 </button>
+<!--END-FILES-->
+
+<!--MARKER-WIRELESS-->
 <button id="wifi-4-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q95-97 220-148t260-52q136 0 261 52t219 148L480-120Zm0-114 364-364q-79-60-172-91t-192-31q-99 0-192 31t-172 91l364 364Z"/></svg>
 </button>
@@ -321,12 +333,14 @@
 <button id="wifi-0-svg" class="icon-btn" style="margin-right: 0.5rem; display: none">
     <svg fill="#e8eaed" viewBox="0 -960 960 960"><path d="M480-120 0-600q95-97 220-148t260-52q136 0 261 52t219 148L480-120Z"/></svg>
 </button>
+<!--END-WIRELESS-->
 <script>
     let isUploadFirmware = true;
     let currentBrowserPath = '/';
 
     const filesContainer = document.getElementById('files-container');
 
+    <!--MARKER-FILES-->
     const deleteSvg = document.getElementById('delete-svg');
     deleteSvg.style.display = 'none';
 
@@ -341,6 +355,7 @@
 
     const currentPathText = document.getElementById('current-path-text');
     currentPathText.innerText = currentBrowserPath;
+    <!--END-FILES-->
 
     function unescapeStr(str) {
         return str ? str.replaceAll('|:', ":").replaceAll('|;', ";").replaceAll("|+", "+") : "";
@@ -373,6 +388,7 @@
         return ret;
     }
 
+    <!--MARKER-ENV-->
     function save() {
         const arr = document.querySelectorAll('.env-input');
 
@@ -390,7 +406,9 @@
             });
         }
     }
+    <!--END-ENV-->
 
+    <!--MARKER-CA-->
     function customAction(eventId) {
         if (confirm('Do action: ' + eventId + ' ?')) {
             doRequest('customa', eventId, "POST", (success) => {
@@ -401,6 +419,7 @@
             });
         }
     }
+    <!--END-CA-->
 
     function doRequest(uri, data, method, cb) {
         var xhr = new XMLHttpRequest();
@@ -418,6 +437,7 @@
         };
     }
 
+    <!--MARKER-FILES-->
     function updateFiles() {
         doRequest('files', currentBrowserPath, "POST", (success, response) => {
             if (success) {
@@ -542,7 +562,9 @@
             });
         }
     }
+    <!--END-FILES-->
 
+    <!--MARKER-OTA-->
     function onOtaUpload(hasFile) {
         const parseName = (name) => name + (isUploadFirmware ? '' : '-f');
 
@@ -618,6 +640,7 @@
         input.value = null;
         input.click();
     }
+    <!--END-OTA-->
 
     function updateInfo() {
         doRequest('info', undefined, 'GET', (success, response) => {
@@ -639,6 +662,7 @@
                 document.getElementById('text-space-total').innerText = spaceTotal;
                 document.getElementById('text-ram').innerText = freeHeap;
 
+                <!--MARKER-ENV-->
                 const envCont = document.getElementById('env-container');
                 envCont.innerHTML = '';
 
@@ -673,7 +697,9 @@
 
                     envCont.appendChild(mainElement);
                 }
+                <!--END-ENV-->
 
+                <!--MARKER-CA-->
                 const caCont = document.getElementById('custom-actions-div');
                 caCont.innerHTML = '';
 
@@ -691,10 +717,7 @@
                     button.innerText = ca;
                     caCont.appendChild(button);
                 }
-
-                if (hasWifi === '0') {
-                    // setTimeout(() => changeMode(2), 100); FIXME
-                }
+                <!--END-CA-->
             } else {
                 alert('Error while trying to fetch info from controller.')
             }
@@ -703,6 +726,7 @@
 
     updateInfo();
 
+    <!--MARKER-WIRELESS-->
     const WIFI_STATUS = {
         WL_IDLE_STATUS: 0,
         WL_NO_SSID_AVAIL: 1,
@@ -841,6 +865,7 @@
             });
         });
     }
+    <!--END-WIRELESS-->
 
     let currentModule = 0;
     const moduleContainer = document.getElementById('modules');
@@ -896,7 +921,29 @@
             }
         }
     };
-    const loadedModules = [moduleTypes.OTA_FIRMWARE, moduleTypes.OTA_FILESYSTEM, moduleTypes.WIRELESS, moduleTypes.FILE_BROWSER, moduleTypes.CUSTOM_ACTIONS, moduleTypes.ENV_VARS];
+    const loadedModules = [];
+
+    <!--MARKER-OTA-->
+    loadedModules.push(moduleTypes.OTA_FIRMWARE);
+    loadedModules.push(moduleTypes.OTA_FILESYSTEM);
+    <!--END-OTA-->
+
+    <!--MARKER-WIRELESS-->
+    loadedModules.push(moduleTypes.WIRELESS);
+    <!--END-WIRELESS-->
+
+    <!--MARKER-CA-->
+    loadedModules.push(moduleTypes.CUSTOM_ACTIONS);
+    <!--END-CA-->
+
+    <!--MARKER-ENV-->
+    loadedModules.push(moduleTypes.ENV_VARS);
+    <!--END-ENV-->
+
+    <!--MARKER-FILES-->
+    loadedModules.push(moduleTypes.FILE_BROWSER);
+    <!--END-FILES-->
+
     moduleSelSpan.innerText = loadedModules[0].name;
     moduleSelSpan.classList.add('select');
     moduleSel.appendChild(moduleSelSpan);
