@@ -1,0 +1,26 @@
+{
+  "name": "esp-config-page",
+  "version": "1.0.0",
+  "keywords": "wifi,wi-fi,esp,esp8266,esp32,espressif8266,espressif32,nodemcu,wemos,arduino",
+  "description": "Config page for esp8266",
+  "frameworks": "arduino",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/davirxavier/esp-config-page.git"
+  },
+  "authors":
+  [
+    {
+      "name": "D. Xavier",
+      "email": "fdavirxxavier@gmail.com",
+      "maintainer": true
+    }
+  ],
+  "license": "MIT",
+  "platforms":
+  [
+    "espressif8266",
+    "esp32"
+  ]
+}
