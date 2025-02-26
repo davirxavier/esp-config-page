@@ -22,7 +22,7 @@
 #define ENABLE_LOGGING
 
 #ifdef ENABLE_LOGGING
-#define LOGH() ESP_CONFIG_PAGE::serial->print("[ESP-CONFIG-PAGE] ")
+#define LOGH() Serial.print("[ESP-CONFIG-PAGE] ")
 #define LOG(str) LOGH(); ESP_CONFIG_PAGE::serial->print(str)
 #define LOGN(str) LOGH(); ESP_CONFIG_PAGE::serial->println(str)
 #define LOGF(str, p...) LOGH(); ESP_CONFIG_PAGE::serial->printf(str, p)
@@ -31,6 +31,8 @@
 #define LOGN(str)
 #define LOGF(str, p...)
 #endif
+
+#include <esp-config-page-logging.h>
 
 #include "std_util.h"
 
@@ -491,6 +493,7 @@ namespace ESP_CONFIG_PAGE
     void ota(WEBSERVER_T& server, String username, String password, REQUEST_TYPE reqType)
     {
         LOGN("OTA upload receiving, starting update process.");
+        ESP_CONFIG_PAGE_LOGGING::disableLogging();
 
         HTTPUpload& upload = server.upload();
         int command = U_FLASH;

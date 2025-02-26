@@ -8,6 +8,12 @@
 
 namespace ESP_CONFIG_PAGE_LOGGING
 {
+#ifdef ESP32
+    using SERIAL_T = HWCDC;
+#elif ESP8266
+    using SERIAL_T = HardwareSerial;
+#endif
+
     AsyncWebServer server(4000);
     AsyncWebSocket socket("/ws");
     unsigned long lastClean;
@@ -19,8 +25,10 @@ namespace ESP_CONFIG_PAGE_LOGGING
     String password;
 
     bool retentionEnabled = false;
+    String logFilePath;
     File logFile;
     unsigned long maximumSizeBytes;
+    bool isLoggingEnabled = false;
 
     struct ConnectedClient
     {
@@ -59,14 +67,18 @@ namespace ESP_CONFIG_PAGE_LOGGING
         }
     }
 
-    class ConfigPageSerial : public HWCDC
+    class ConfigPageSerial : public SERIAL_T
     {
     public:
+#ifdef ESP8266
+        ConfigPageSerial(HardwareSerial &serial): HardwareSerial(serial) {}
+#endif
+
         size_t write(const uint8_t* buffer, size_t size) override
         {
-            if ((size == 2 && buffer[0] == '\r' && buffer[1] == '\n') || (size == 1 && buffer[0] == '\n'))
+            if (!isLoggingEnabled || (size == 2 && buffer[0] == '\r' && buffer[1] == '\n') || (size == 1 && buffer[0] == '\n'))
             {
-                return HWCDC::write(buffer, size);
+                return SERIAL_T::write(buffer, size);
             }
 
             sendDataToClients(buffer, size, true);
@@ -79,13 +91,12 @@ namespace ESP_CONFIG_PAGE_LOGGING
             }
             else if (retentionEnabled && logFile && logFile.size() >= maximumSizeBytes)
             {
-                const char *filePath = logFile.path();
                 logFile.close();
-                LittleFS.remove(filePath);
-                logFile = LittleFS.open(filePath, "w");
+                LittleFS.remove(logFilePath);
+                logFile = LittleFS.open(logFilePath, "w");
             }
 
-            return HWCDC::write(buffer, size);
+            return SERIAL_T::write(buffer, size);
         }
     };
 
@@ -113,6 +124,21 @@ namespace ESP_CONFIG_PAGE_LOGGING
                         if (connectedClients[i] == nullptr)
                         {
                             connectedClients[i] = new ConnectedClient(client->id(), millis(), false);
+
+                            if (retentionEnabled)
+                            {
+                                retentionEnabled = false;
+                                logFile.close();
+
+                                File file = LittleFS.open(logFilePath, "r");
+                                uint8_t buf[file.size()];
+                                file.read(buf, file.size());
+                                file.close();
+
+                                client->text(buf, sizeof(buf));
+                                logFile = LittleFS.open(logFilePath, "a");
+                                retentionEnabled = true;
+                            }
                             return;
                         }
                     }
@@ -189,11 +215,18 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
         server.addHandler(&socket);
         server.begin();
+        isLoggingEnabled = true;
     }
 
     inline void enableLogging(Stream &serial)
     {
         enableLogging(String(), String(), serial);
+    }
+
+    inline void disableLogging()
+    {
+        server.end();
+        isLoggingEnabled = false;
     }
 
     inline void loop()
@@ -229,7 +262,8 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
     inline void setLogRetention(String filePath, unsigned int logFileMaxSizeBytes)
     {
-        logFile = LittleFS.open(filePath, "w");
+        logFilePath = filePath;
+        logFile = LittleFS.open(filePath, "a");
         maximumSizeBytes = logFileMaxSizeBytes;
         retentionEnabled = true;
     }

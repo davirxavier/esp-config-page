@@ -8,6 +8,7 @@ Features:
 - Custom actions that can be triggered from the web page.
 - OTA updates.
 - File browser and management.
+- Logs monitoring.
 - (and completely free of charge 😉)
 
 Access the config page in the url http://YOURBOARDIP/config. The default ip while in AP mode is 192.168.1.1.
@@ -230,7 +231,7 @@ All configuration modules will be enabled by default, but you can define what mo
 Simply run the the python script located in the buildtool folder in the library's root directory (inside .pio/build if you are using platformio), you can choose what modules are enabled passing the desired module names as arguments to the script. Below is an example call to the script of all the available parameters.
 
 ````
-python update_modules.py --wireless --ca --env --files --ota
+python update_modules.py --wireless --ca --env --files --ota --logging
 ````
 
 Or if you want only the wireless configuration module, for example:
