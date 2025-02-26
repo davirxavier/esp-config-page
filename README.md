@@ -1,6 +1,6 @@
 # ESP-CONFIG-PAGE
 
-Dynamic configuration web page for the ESP8266 and ESP32 boards using the arduino core.
+Dynamic and completely modular configuration web page for the ESP8266 and ESP32 boards using the arduino core.
 
 Features:
 - WiFi network management and automatic connection.
