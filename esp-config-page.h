@@ -12,7 +12,7 @@
 #ifdef ESP32
 #include "WebServer.h"
 #include "Update.h"
-#elif
+#elif ESP8266
 #include "ESP8266WebServer.h"
 #endif
 
@@ -22,9 +22,10 @@
 #define ENABLE_LOGGING
 
 #ifdef ENABLE_LOGGING
-#define LOG(str) Serial.print(str)
-#define LOGN(str) Serial.println(str)
-#define LOGF(str, p...) Serial.printf(str, p)
+#define LOGH() Serial.print("[ESP-CONFIG-PAGE] ")
+#define LOG(str) LOGH(); Serial.print(str)
+#define LOGN(str) LOGH(); Serial.println(str)
+#define LOGF(str, p...) LOGH(); Serial.printf(str, p)
 #else
 #define LOG(str)
 #define LOGN(str)
@@ -66,7 +67,7 @@ namespace ESP_CONFIG_PAGE {
 
 #ifdef ESP32
     using WEBSERVER_T = WebServer;
-#else
+#elif ESP8266
     using WEBSERVER_T = ESP8266WebServer;
 #endif
 
@@ -276,7 +277,7 @@ namespace ESP_CONFIG_PAGE {
                 Serial.println("LittleFS formatted successfully");
             }
         }
-#else
+#elif ESP8266
         LittleFS.begin();
 #endif
 
@@ -358,7 +359,7 @@ namespace ESP_CONFIG_PAGE {
                     LOGN("LittleFS formatted successfully");
                 }
             }
-#else
+#elif ESP8266
             LittleFS.begin();
 #endif
 
@@ -428,8 +429,8 @@ namespace ESP_CONFIG_PAGE {
     const char* getUpdateErrorStr() {
 #ifdef ESP32
         return Update.errorString();
-#else
-        return Update.getErrorString();
+#elif ESP8266
+        return Update.getErrorString().c_str();
 #endif
     }
 
@@ -442,7 +443,7 @@ namespace ESP_CONFIG_PAGE {
             LOGN("OTA update set to FILESYSTEM mode.");
 #ifdef ESP32
             command = U_SPIFFS;
-#else
+#elif ESP8266
             command = U_FS;
 #endif
         }
@@ -455,7 +456,7 @@ namespace ESP_CONFIG_PAGE {
 
 #ifdef ESP32
             uint32_t maxSpace = UPDATE_SIZE_UNKNOWN;
-#else
+#elif ESP8266
             uint32_t maxSpace = 0;
             if (command == U_FLASH) {
                 maxSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
@@ -503,15 +504,21 @@ namespace ESP_CONFIG_PAGE {
      *
      * @param force - pass true if the connection is to be forced, that is, if you want to ignore any saved wireless
      * configurations. Should be false on normal usage.
+     * @param timeoutMs - timeout in milliseconds for waiting for a connection.
      */
-    void tryConnectWifi(bool force) {
+    void tryConnectWifi(bool force, unsigned long timeoutMs) {
         LOGF("Trying to connect to wifi, force reconnect: %s\n", force ? "yes" : "no");
         if (!force && WiFi.status() == WL_CONNECTED) {
             LOGN("Already connected, cancelling reconnection.");
             return;
         }
 
-        WiFi.mode(WIFI_STA);
+#ifdef ESP32
+        WiFi.mode(WIFI_MODE_APSTA);
+#elif ESP8266
+        WiFi.mode(WIFI_AP_STA);
+#endif
+
         WiFi.setAutoReconnect(true);
         WiFi.persistent(true);
 
@@ -523,16 +530,24 @@ namespace ESP_CONFIG_PAGE {
         }
 
         LOGN("Connecting now...");
-        int result = WiFi.waitForConnectResult(60000);
+        int result = WiFi.waitForConnectResult(timeoutMs);
         LOGF("Connection result: %d\n", result);
 
-        if (result == WL_CONNECTED) {
-            LOGF("Connected successfully, starting dns server with name %s.\n", dnsName.c_str());
-            delay(200);
-        } else {
+        if (result != WL_CONNECTED) {
             LOGN("Connection error.");
             lastConnectionError = result;
         }
+    }
+
+    /**
+     * Tries to reconnect automatically to the saved wireless connection, if there are any.
+     *
+     * @param force - pass true if the connection is to be forced, that is, if you want to ignore any saved wireless
+     * configurations. Should be false on normal usage.
+     */
+    void tryConnectWifi(bool force)
+    {
+        tryConnectWifi(force, 30000);
     }
 
     void setWiFiCredentials(String &ssid, String &pass) {
@@ -579,7 +594,7 @@ namespace ESP_CONFIG_PAGE {
                         nextFile.close();
                     }
                 }
-#else
+#elif ESP8266
                 Dir dir = LittleFS.openDir(path);
                 while (dir.next()) {
                     ret += dir.fileName() + ":" + (dir.isDirectory() ? "true" : "false") + ":" + dir.fileSize() + ";";
@@ -698,7 +713,7 @@ namespace ESP_CONFIG_PAGE {
 
 #ifdef ESP32
                 ESP.restart();
-#else
+#elif ESP8266
                 ESP.reset();
 #endif
                 break;
@@ -722,7 +737,7 @@ namespace ESP_CONFIG_PAGE {
 #ifdef ESP32
                 String usedBytes = String(LittleFS.usedBytes());
                 String totalBytes = String(LittleFS.totalBytes());
-#else
+#elif ESP8266
                 FSInfo fsInfo;
                 LittleFS.info(fsInfo);
                 String usedBytes = String(fsInfo.usedBytes);
@@ -791,7 +806,7 @@ namespace ESP_CONFIG_PAGE {
                     for (int i = 0; i < count; i++) {
 #ifdef ESP32
                         const wifi_ap_record_t *it = reinterpret_cast<wifi_ap_record_t*>(WiFi.getScanInfoByIndex(i));
-#else
+#elif ESP8266
                         const bss_info *it = WiFi.getScanInfoByIndex(i);
 #endif
 
@@ -870,6 +885,13 @@ namespace ESP_CONFIG_PAGE {
 
          if (!apStarted && lastConnectionError != -1) {
              LOGF("Connection error %d, starting AP.\n", lastConnectionError);
+
+#ifdef ESP32
+             WiFi.mode(WIFI_MODE_APSTA);
+#elif ESP8266
+             WiFi.mode(WIFI_AP_STA);
+#endif
+
              WiFi.softAP(apSsid, apPass);
              LOGF("Server IP is %s.\n", apIp.toString().c_str());
              apStarted = true;
@@ -881,6 +903,13 @@ namespace ESP_CONFIG_PAGE {
              lastConnectionError = -1;
              apStarted = false;
              connected = true;
+
+             LOGN("Disabling AP.");
+#ifdef ESP32
+             WiFi.mode(WIFI_MODE_STA);
+#elif ESP8266
+             WiFi.mode(WIFI_AP_STA);
+#endif
          }
     }
 
@@ -921,7 +950,7 @@ namespace ESP_CONFIG_PAGE {
             File file = LittleFS.open(filePath, "w");
 #ifdef ESP32
             file.print(buf);
-#else
+#elif ESP8266
             file.write(buf);
 #endif
             file.close();
