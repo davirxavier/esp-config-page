@@ -67,6 +67,7 @@ namespace ESP_CONFIG_PAGE
         {
             LOGN("Connection error.");
             lastConnectionError = result;
+            WiFi.disconnect();
         }
     }
 
@@ -97,6 +98,12 @@ namespace ESP_CONFIG_PAGE
     inline void wifiGet()
     {
         int count = WiFi.scanNetworks();
+        if (count < 0)
+        {
+            server->send(500, "text/plain", "Error while searching networks.");
+            return;
+        }
+
         String ssid = WiFi.SSID();
         int bufSize = ssid.length() + 8;
         int wifiStatus = WiFi.status();
@@ -112,11 +119,11 @@ namespace ESP_CONFIG_PAGE
                 const bss_info *it = WiFi.getScanInfoByIndex(i);
 #endif
 
-                if (!it)
-                {
-                    ssids[i][0] = '\0';
-                    continue;
-                }
+                 if (!it)
+                 {
+                     ssids[i][0] = '\0';
+                     continue;
+                 }
 
                 memcpy(ssids[i], it->ssid, sizeof(it->ssid));
                 ssids[count][32] = '\0';
@@ -127,30 +134,26 @@ namespace ESP_CONFIG_PAGE
         char buf[bufSize];
         buf[0] = '\0';
 
+        strcat(buf, ssid.c_str());
+        strcat(buf, "\n");
+        strcat(buf, String(lastConnectionError != -1 ? lastConnectionError : wifiStatus).c_str());
+        strcat(buf, "\n");
+
         if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1)
         {
             for (int i = 0; i < count; i++)
             {
-                char escapebuf[strlen(ssids[i])];
-                escape(escapebuf, ssids[i]);
-
                 uint32_t rssi = WiFi.RSSI(i);
-                int rssiLength = snprintf(NULL, 0, "%d", rssi);
+                int rssiLength = snprintf(nullptr, 0, "%d", rssi);
                 char rssibuf[rssiLength + 1];
                 sprintf(rssibuf, "%d", rssi);
 
-                strcat(buf, escapebuf);
-                strcat(buf, ":");
+                strcat(buf, ssids[i]);
+                strcat(buf, "\n");
                 strcat(buf, rssibuf);
-                strcat(buf, ":;");
+                strcat(buf, "\n");
             }
         }
-
-        strcat(buf, "+");
-        strcat(buf, ssid.c_str());
-        strcat(buf, "+");
-        strcat(buf, String(lastConnectionError != -1 ? lastConnectionError : wifiStatus).c_str());
-        strcat(buf, "+");
 
         server->send(200, "text/plain", buf);
     }
@@ -159,26 +162,47 @@ namespace ESP_CONFIG_PAGE
     {
         String body = server->arg("plain");
 
-        uint8_t size = countChar(body.c_str(), ':');
-        std::shared_ptr<char[]> ssidAndPass[size];
-        getValueSplit(body.c_str(), ':', ssidAndPass);
-
-        if (size < 2)
+        if (countChar(body.c_str(), '\n') < 2)
         {
-            server->send(400, "text/plain", "Invalid request.");
+            server->send(400);
             return;
         }
 
-        char ssidUnescaped[strlen(ssidAndPass[0].get())];
-        char passUnescaped[strlen(ssidAndPass[1].get())];
+        char buf[33];
+        char ssid[33];
+        unsigned int currentChar = 0;
+        bool isSsid = true;
 
-        unescape(ssidUnescaped, ssidAndPass[0].get());
-        unescape(passUnescaped, ssidAndPass[1].get());
+        for (unsigned int i = 0; i < body.length(); i++)
+        {
+            char c = body[i];
 
-        server->send(200);
-        wifiSsid = String(ssidUnescaped);
-        wifiPass = String(passUnescaped);
-        tryConnectWifi(true);
+            if (c == '\n')
+            {
+                buf[currentChar] = 0;
+
+                if (isSsid)
+                {
+                    strcpy(ssid, buf);
+                    isSsid = false;
+                }
+                else
+                {
+                    server->send(200);
+                    wifiSsid = String(ssid);
+                    wifiPass = String(buf);
+                    tryConnectWifi(true);
+                    break;
+                }
+
+                currentChar = 0;
+            }
+            else
+            {
+                buf[currentChar] = c;
+                currentChar++;
+            }
+        }
     }
 
     inline void enableWirelessModule()
@@ -188,17 +212,8 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        server->on(F("/config/wifi"), HTTP_GET, []()
-        {
-            VALIDATE_AUTH();
-            wifiGet();
-        });
-
-        server->on(F("/config/wifi"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            wifiSet();
-        });
+        addServerHandler((char*) F("/config/wifi"), HTTP_GET, wifiGet);
+        addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
     }
 
     inline void wirelessLoop()

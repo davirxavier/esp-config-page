@@ -11,7 +11,7 @@ namespace ESP_CONFIG_PAGE
 {
     struct CustomAction
     {
-        const String key;
+        const char *key;
         std::function<void(WEBSERVER_T& server)> handler;
     };
 
@@ -26,7 +26,7 @@ namespace ESP_CONFIG_PAGE
         for (uint8_t i = 0; i < customActionsCount; i++)
         {
             CustomAction* ca = customActions[i];
-            infoSize += sizeWithEscaping(ca->key.c_str()) + 4;
+            infoSize += strlen(ca->key) + 3;
         }
 
         return infoSize;
@@ -39,7 +39,7 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        CustomAction* ca = NULL;
+        CustomAction* ca = nullptr;
         String body = server->arg(F("plain"));
 
         for (uint8_t i = 0; i < customActionsCount; i++)
@@ -50,13 +50,15 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
-        if (ca != NULL)
+        if (ca != nullptr)
         {
+            LOGF("Triggering custom action: %s\n", ca->key);
             ca->handler(*server);
+            server->send(200);
         }
         else
         {
-            server->send(200);
+            server->send(404);
         }
     }
 
@@ -66,9 +68,9 @@ namespace ESP_CONFIG_PAGE
      * @param key - name of the action, has to be unique for all added actions.
      * @param handler - handler function for the action.
      */
-    inline void addCustomAction(String key, std::function<void(WEBSERVER_T& server)> handler)
+    inline void addCustomAction(const char *key, std::function<void(WEBSERVER_T& server)> handler)
     {
-        LOGF("Adding action %s.\n", key.c_str());
+        LOGF("Adding action %s.\n", key);
         if (customActionsCount + 1 > maxCustomActions)
         {
             maxCustomActions = maxCustomActions == 0 ? 1 : ceil(maxCustomActions * 1.5);
@@ -80,32 +82,25 @@ namespace ESP_CONFIG_PAGE
         customActionsCount++;
     }
 
+    inline void getCa()
+    {
+        char buf[caSize()+1];
+        buf[0] = 0;
+
+        for (uint8_t i = 0; i < customActionsCount; i++)
+        {
+            CustomAction* ca = customActions[i];
+            strcat(buf, ca->key);
+            strcat(buf, "\n");
+        }
+
+        server->send(200, "text/plain", buf);
+    }
+
     inline void enableCustomActionsModule()
     {
-        server->on(F("/config/customa"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            tiggerCustomAction();
-        });
-
-        server->on(F("/config/customa"), HTTP_GET, []()
-        {
-            VALIDATE_AUTH();
-
-            char buf[caSize()+1];
-            for (uint8_t i = 0; i < customActionsCount; i++)
-            {
-                CustomAction* ca = customActions[i];
-
-                char bufKey[sizeWithEscaping(ca->key.c_str())];
-                escape(bufKey, ca->key.c_str());
-
-                strcat(buf, bufKey);
-                strcat(buf, ";");
-            }
-
-            server->send(200, "text/plain", buf);
-        });
+        addServerHandler((char*) F("/config/customa"), HTTP_POST, tiggerCustomAction);
+      addServerHandler((char*) F("/config/customa"), HTTP_GET, getCa);
     }
 }
 

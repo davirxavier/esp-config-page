@@ -30,6 +30,8 @@ namespace ESP_CONFIG_PAGE
                 nextFile.close();
             }
         }
+
+        file.close();
 #elif ESP8266
         Dir dir = LittleFS.openDir(path);
         while (dir.next()) {
@@ -85,37 +87,23 @@ namespace ESP_CONFIG_PAGE
 #ifdef ESP32
         if (!LittleFS.begin(false /* false: Do not format if mount failed */))
         {
-            Serial.println("Failed to mount LittleFS");
+            LOGN("Failed to mount LittleFS");
             if (!LittleFS.begin(true /* true: format */))
             {
-                Serial.println("Failed to format LittleFS");
+                LOGN("Failed to format LittleFS");
             }
             else
             {
-                Serial.println("LittleFS formatted successfully");
+                LOGN("LittleFS formatted successfully");
             }
         }
 #elif ESP8266
         LittleFS.begin();
 #endif
 
-        server->on(F("/config/files"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            getFiles();
-        });
-
-        server->on(F("/config/files/download"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            downloadFile();
-        });
-
-        server->on(F("/config/files/delete"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            deleteFile();
-        });
+        addServerHandler((char*) F("/config/files"), HTTP_POST, getFiles);
+        addServerHandler((char*) F("/config/files/download"), HTTP_POST, downloadFile);
+        addServerHandler((char*) F("/config/files/delete"), HTTP_POST, deleteFile);
     }
 }
 

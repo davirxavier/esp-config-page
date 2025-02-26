@@ -1,8 +1,6 @@
 #ifndef DX_ESP_CONFIG_PAGE_LOGGING_H
 #define DX_ESP_CONFIG_PAGE_LOGGING_H
 
-#include "esp-config-defines.h"
-
 #include "Arduino.h"
 #include "ESPAsyncWebServer.h"
 
@@ -69,6 +67,9 @@ namespace ESP_CONFIG_PAGE_LOGGING
         }
     }
 
+    /**
+     * Custom serial class, will send all printed text to the connected logging websockets client.
+     */
     class ConfigPageSerial : public SERIAL_T
     {
     public:
@@ -262,6 +263,12 @@ namespace ESP_CONFIG_PAGE_LOGGING
         }
     }
 
+    /**
+     * Enables log retention policy in a LittleFS file. If the maximum size is exceeded the file will be cleared and recreated.
+     *
+     * @param filePath File to save logs
+     * @param logFileMaxSizeBytes Maximum log file size in bytes
+     */
     inline void setLogRetention(String filePath, unsigned int logFileMaxSizeBytes)
     {
         logFilePath = filePath;

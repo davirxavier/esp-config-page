@@ -303,14 +303,18 @@
     <!--MARKER-WIRELESS-->
     <div id="wifi-config-cont" class="cont med screen-panel">
         <div class="flex-center">
-            <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Refresh</button>
+            <button class="small-btn" title="Connect without ssid" onclick="connectToWifi()">Connect Manually</button>
+        </div>
+
+        <div class="flex-center">
+            <button class="small-btn" title="Refresh" onclick="getWifiSettings()">Load Networks</button>
         </div>
 
         <div class="flex-center" style="margin-top: 1rem;">
             <p id="wifi-status-text" class="title-text" style="margin: 0;"></p>
         </div>
 
-        <span class="loader-animated" id="wifi-loader" style="margin: 1.5rem auto 0 auto; width: 20%; height: 8px;"></span>
+        <span class="loader-animated" id="wifi-loader" style="margin: 1.5rem auto 0 auto; width: 20%; height: 8px; display: none;"></span>
         <div id="wifi-list" class="cont med" style="margin: 1rem auto -1rem auto; gap: 0;">
         </div>
     </div>
@@ -472,7 +476,7 @@
 
         if (window.confirm('Save environment variables?')) {
             let str = '';
-            Object.keys(obj).forEach(key => str += `${escapeStr(key)}:${escapeStr(obj[key])}:;`);
+            Object.keys(obj).forEach(key => str += `${key}\n${obj[key]}\n`);
             doRequest('save', str, "POST", (success, res) => {
                 alert(success ? 'Environment saved successfully!' : `Error while saving: ${res}`);
                 location.reload();
@@ -750,14 +754,30 @@
             const envCont = document.getElementById('env-container');
             envCont.innerHTML = '';
 
-            const envSplit = splitEscaped(response, ';');
-            for (const keyValue of envSplit) {
-                const kvSplit = splitEscaped(keyValue, ':');
-                const key = unescapeStr(kvSplit[0]);
-                const value = unescapeStr(kvSplit[1]);
+            const envSplit = response.split('\n');
+            const keysAndValues = [];
+            let isKey = true;
+            let currentKey = "";
+            for (const split of envSplit) {
+                if (isKey) {
+                    currentKey = split;
+                } else {
+                    keysAndValues.push({key: currentKey, value: split});
+                }
+
+                isKey = !isKey;
+            }
+
+            for (const keyValue of keysAndValues) {
+                let key = keyValue.key;
+                const value = keyValue.value;
 
                 if (!key || key === '') {
                     continue;
+                }
+
+                if (key.startsWith("\n")) {
+                    key = key.substring(1);
                 }
 
                 const id = 'input-' + key;
@@ -793,10 +813,8 @@
             const caCont = document.getElementById('custom-actions-div');
             caCont.innerHTML = '';
 
-            const caSplit = splitEscaped(response, ';');
-            for (const caEscaped of caSplit) {
-                const ca = unescapeStr(caEscaped);
-
+            const caSplit = response.split('\n');
+            for (const ca of caSplit) {
                 if (ca === '') {
                     continue;
                 }
@@ -843,6 +861,40 @@
         WL_NOT_STARTED: "Not configured"
     };
 
+    function connectToWifi(ssidPre) {
+        let ssid;
+        if (!ssidPre) {
+            ssid = prompt(`Enter the desired network name below.`);
+            if (!ssid || ssid === '') {
+                alert('Invalid input.');
+                return;
+            }
+        } else {
+            ssid = ssidPre;
+        }
+
+        const pass = prompt(`Enter the password for the network ${ssid} below.`);
+        if (!pass || pass === '') {
+            alert('Invalid input.');
+            return;
+        }
+
+        document.getElementById('wifi-list').innerHTML = '';
+        document.getElementById('wifi-loader').style.display = 'block';
+
+        doRequest('wifi', escapeStr(ssid) + "\n" + escapeStr(pass) + '\n', 'POST', (success, responseText) => {
+            if (success) {
+                alert('Connection attempt started, this page can be down for some time while connecting.');
+                location.reload();
+            } else {
+                alert('Error while trying to connect: ' + responseText);
+                setTimeout(() => {
+                    getWifiSettings();
+                }, 500);
+            }
+        });
+    }
+
     let loadingWifi = false;
     function getWifiSettings() {
         const loader = document.getElementById('wifi-loader');
@@ -869,9 +921,25 @@
                 return;
             }
 
-            const split = splitEscaped(response, '+');
-            const currentSsid = unescapeStr(split[1]);
-            const status = parseInt(unescapeStr(split[2]));
+            const split = response.split('\n');
+            const ssidAndRssi = [];
+
+            let isSsid = true;
+            let currentLoopSsid;
+            if (split.length > 2) {
+                split.slice(2).forEach(s => {
+                    if (isSsid) {
+                        currentLoopSsid = s;
+                    } else {
+                        ssidAndRssi.push({ssid: currentLoopSsid, rssi: s});
+                    }
+
+                    isSsid = !isSsid;
+                });
+            }
+
+            const currentSsid = split[0];
+            const status = parseInt(split[1]);
 
             if (status === WIFI_STATUS.WL_CONNECTING) {
                 loader.style.display = 'block';
@@ -886,13 +954,10 @@
                 }
             }
 
-            const networks = splitEscaped(split[0], ';').map(net => {
-                const ssidAndRssi = splitEscaped(net, ':');
-                const ssid = unescapeStr(ssidAndRssi[0]);
-                const rssi = parseInt(unescapeStr(ssidAndRssi[1]));
-                const rssiMapped = Math.ceil((Math.abs(rssi) / 24) - 1);
-
-                return {ssid, rssi, rssiMapped};
+            const networks = ssidAndRssi.map(sr => {
+                const rssi = parseInt(sr.rssi);
+                const rssiMapped = Math.ceil((Math.abs(rssi) / 24) - 1.5);
+                return {ssid: sr.ssid, rssi, rssiMapped};
             });
             networks.sort((n1, n2) => n1.rssi > n2.rssi ? -1 : 1);
 
@@ -931,28 +996,7 @@
                 btn.style.marginBottom = '0.5rem';
                 container.appendChild(btn);
 
-                connectBtn.onclick = () => {
-                    const pass = prompt(`Enter the password for the network ${ssid} below.`);
-                    if (!pass || pass === '') {
-                        alert('Invalid input.');
-                        return;
-                    }
-
-                    container.innerHTML = '';
-                    loader.style.display = 'block';
-
-                    doRequest('wifi', escapeStr(ssid) + ":" + escapeStr(pass) + ':', 'POST', (success, responseText) => {
-                        if (success) {
-                            alert('Connection attempt started, this page can be down for some time while connecting.');
-                            location.reload();
-                        } else {
-                            alert('Error while trying to connect: ' + responseText);
-                            setTimeout(() => {
-                                getWifiSettings();
-                            }, 500);
-                        }
-                    });
-                };
+                connectBtn.onclick = () => connectToWifi(ssid);
             });
         });
     }
@@ -1111,7 +1155,7 @@
         WIRELESS: {
             name: 'Wireless',
             title: 'WIRELESS SETTINGS',
-            onChange: () => getWifiSettings()
+            onChange: () => {}
         },
         FILE_BROWSER: {
             name: 'File Browser',
