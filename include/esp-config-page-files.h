@@ -99,23 +99,9 @@ namespace ESP_CONFIG_PAGE
         LittleFS.begin();
 #endif
 
-        server->on(F("/config/files"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            getFiles();
-        });
-
-        server->on(F("/config/files/download"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            downloadFile();
-        });
-
-        server->on(F("/config/files/delete"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            deleteFile();
-        });
+        REGISTER_SERVER_METHOD(F("/config/files"), HTTP_POST, getFiles);
+        REGISTER_SERVER_METHOD(F("/config/files/download"), HTTP_POST, downloadFile);
+        REGISTER_SERVER_METHOD(F("/config/files/delete"), HTTP_POST, deleteFile);
     }
 }
 

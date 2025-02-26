@@ -67,6 +67,7 @@ namespace ESP_CONFIG_PAGE
         {
             LOGN("Connection error.");
             lastConnectionError = result;
+            WiFi.disconnect();
         }
     }
 
@@ -97,6 +98,12 @@ namespace ESP_CONFIG_PAGE
     inline void wifiGet()
     {
         int count = WiFi.scanNetworks();
+        if (count < 0)
+        {
+            server->send(500, "text/plain", "Error while searching networks.");
+            return;
+        }
+
         String ssid = WiFi.SSID();
         int bufSize = ssid.length() + 8;
         int wifiStatus = WiFi.status();
@@ -112,11 +119,11 @@ namespace ESP_CONFIG_PAGE
                 const bss_info *it = WiFi.getScanInfoByIndex(i);
 #endif
 
-                if (!it)
-                {
-                    ssids[i][0] = '\0';
-                    continue;
-                }
+                 if (!it)
+                 {
+                     ssids[i][0] = '\0';
+                     continue;
+                 }
 
                 memcpy(ssids[i], it->ssid, sizeof(it->ssid));
                 ssids[count][32] = '\0';
@@ -135,7 +142,7 @@ namespace ESP_CONFIG_PAGE
                 escape(escapebuf, ssids[i]);
 
                 uint32_t rssi = WiFi.RSSI(i);
-                int rssiLength = snprintf(NULL, 0, "%d", rssi);
+                int rssiLength = snprintf(nullptr, 0, "%d", rssi);
                 char rssibuf[rssiLength + 1];
                 sprintf(rssibuf, "%d", rssi);
 
@@ -188,17 +195,8 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        server->on(F("/config/wifi"), HTTP_GET, []()
-        {
-            VALIDATE_AUTH();
-            wifiGet();
-        });
-
-        server->on(F("/config/wifi"), HTTP_POST, []()
-        {
-            VALIDATE_AUTH();
-            wifiSet();
-        });
+        REGISTER_SERVER_METHOD(F("/config/wifi"), HTTP_GET, wifiGet);
+        REGISTER_SERVER_METHOD(F("/config/wifi"), HTTP_POST, wifiSet);
     }
 
     inline void wirelessLoop()
