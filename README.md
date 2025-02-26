@@ -12,9 +12,9 @@ Features:
 
 Access the config page in the url http://YOURBOARDIP/config. The default ip while in AP mode is 192.168.1.1.
 
-![Image containing the libraries complete web interface.](images/full.png)
+![Image containing the libraries complete web interface.](https://github.com/davirxavier/esp-config-page/blob/main/images/full.png?raw=true)
 
-![Image containing the libraries complete file browser interface.](images/files.png)
+![Image containing the libraries complete file browser interface.](https://github.com/davirxavier/esp-config-page/blob/main/images/files.png?raw=true)
 
 ### Basic Usage
 
@@ -94,7 +94,7 @@ void loop() {
 
 If the board can't connect to the network, it will enable an AP network that you can connect to, allowing you to configure your wireless network using the web interface:
 
-![List of wireless networks near the board, prompting the user for the one to connect.](images/wireless.png)
+![List of wireless networks near the board, prompting the user for the one to connect.](https://github.com/davirxavier/esp-config-page/blob/main/images/wireless.png?raw=true)
 
 ### Environment Variables Configuration
 
@@ -170,7 +170,7 @@ void loop() {
 
 This will show a list of fields in the configuration webpage, where you can modify the environment variables of your board anytime you want.
 
-![Image showing fields containing the environment variables that were defined in the code.](images/envvars.png)
+![Image showing fields containing the environment variables that were defined in the code.](https://github.com/davirxavier/esp-config-page/blob/main/images/envvars.png?raw=true)
 
 ### Custom Actions
 
@@ -221,6 +221,4 @@ void loop() {
 }
 ````
 
-![Image depicting the settings web page, containing an action button.](images/actions.png)
-
-### To be finished...
+![Image depicting the settings web page, containing an action button.](https://raw.githubusercontent.com/davirxavier/esp-config-page/refs/heads/main/images/actions.png?raw=true)
