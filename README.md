@@ -1,6 +1,6 @@
 # ESP-CONFIG-PAGE
 
-Dynamic configuration web page for the ESP8266 and ESP32 boards using the arduino core.
+Dynamic and completely modular configuration web page for the ESP8266 and ESP32 boards using the arduino core.
 
 Features:
 - WiFi network management and automatic connection.
@@ -222,3 +222,23 @@ void loop() {
 ````
 
 ![Image depicting the settings web page, containing an action button.](https://raw.githubusercontent.com/davirxavier/esp-config-page/refs/heads/main/images/actions.png?raw=true)
+
+### Change Enabled Modules
+
+All configuration modules will be enabled by default, but you can define what modules you want to be enabled to save storage by using the build script included with this package.
+
+Simply run the the python script located in the buildtool folder in the library's root directory (inside .pio/build if you are using platformio), you can choose what modules are enabled passing the desired module names as arguments to the script. Below is an example call to the script of all the available parameters.
+
+````
+python update_modules.py --wireless --ca --env --files --ota
+````
+
+Or if you want only the wireless configuration module, for example:
+
+````
+python update_modules.py --wireless
+````
+
+This will automatically update the webpage's html file with only the modules you want to use.
+
+(The python script needs Rust and Cargo to be installed in your machine to run).
