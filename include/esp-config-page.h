@@ -12,7 +12,6 @@
 #include <esp-config-page-ca.h>
 #include <esp-config-page-env.h>
 #include <esp-config-page-files.h>
-#include <esp-config-page-logging.h>
 #include <esp-config-page-ota.h>
 #include <esp-config-page-wireless.h>
 #include <esp-config-page-attributes.h>
@@ -176,11 +175,6 @@ namespace ESP_CONFIG_PAGE
             case WIRELESS:
                 {
                     wirelessLoop();
-                    break;
-                }
-            case LOGGING:
-                {
-                    ESP_CONFIG_PAGE_LOGGING::loop();
                     break;
                 }
             default: break;

@@ -22,5 +22,8 @@
   [
     "espressif8266",
     "esp32"
-  ]
+  ],
+  "dependencies": {
+    "links2004/WebSockets": "2.6.1"
+  }
 }

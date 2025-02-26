@@ -9,7 +9,6 @@
 #endif
 
 #include "LittleFS.h"
-#include "std-util.h"
 
 #define ENABLE_LOGGING
 #ifdef ENABLE_LOGGING
@@ -124,39 +123,6 @@ namespace ESP_CONFIG_PAGE
         return delimiterCount;
     }
 
-    inline void getValueSplit(const char data[], char separator, std::shared_ptr<char[]> ret[])
-    {
-        uint8_t currentStr = 0;
-        int lastIndex = 0;
-        bool escaped = false;
-        unsigned int len = strlen(data);
-
-        for (unsigned int i = 0; i < len; i++)
-        {
-            const char c = data[i];
-
-            if (c == '|' && !escaped)
-            {
-                escaped = true;
-            }
-            else if (c == separator && !escaped)
-            {
-                int newLen = i - lastIndex + 1;
-                ret[currentStr] = newer_std::make_unique<char[]>(newLen);
-
-                strncpy(ret[currentStr].get(), data + lastIndex, newLen - 1);
-                ret[currentStr].get()[newLen - 1] = '\0';
-
-                lastIndex = i + 1;
-                currentStr++;
-            }
-            else
-            {
-                escaped = false;
-            }
-        }
-    }
-
     /**
      * Sets the esp-config-page serial for printing.
      * @param toSet serial to set.
@@ -173,7 +139,6 @@ namespace ESP_CONFIG_PAGE
         FILES,
         ACTIONS,
         ENVIRONMENT,
-        LOGGING,
         ATTRIBUTES,
     };
     Modules *enabledModules = nullptr;

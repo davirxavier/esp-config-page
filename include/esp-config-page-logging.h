@@ -1,8 +1,11 @@
 #ifndef DX_ESP_CONFIG_PAGE_LOGGING_H
 #define DX_ESP_CONFIG_PAGE_LOGGING_H
 
+#define ENABLE_LOGGING_MODULE
+
 #include "Arduino.h"
-#include "ESPAsyncWebServer.h"
+#include "WebSocketsServer.h"
+#include "LittleFS.h"
 
 #define MAX_CLIENTS 8
 
@@ -14,8 +17,7 @@ namespace ESP_CONFIG_PAGE_LOGGING
     using SERIAL_T = HardwareSerial;
 #endif
 
-    AsyncWebServer server(4000);
-    AsyncWebSocket socket("/ws");
+    WebSocketsServer server(4000);
     unsigned long lastClean;
     uint8_t pingMessage[] = {0xDE};
     bool isAuthEnabled = false;
@@ -32,18 +34,18 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
     struct ConnectedClient
     {
-        ConnectedClient(uint32_t id, unsigned long connectedTime, bool authed) : id(id), connectedTime(connectedTime),
+        ConnectedClient(uint8_t id, unsigned long connectedTime, bool authed) : id(id), connectedTime(connectedTime),
             authed(authed)
         {
         };
-        uint32_t id;
+        uint8_t id;
         unsigned long connectedTime;
         bool authed;
     };
 
     ConnectedClient* connectedClients[MAX_CLIENTS];
 
-    inline void sendDataToClients(const uint8_t *buffer, const size_t size, bool isText)
+    inline void sendDataToClients(const uint8_t* buffer, const size_t size, bool isText)
     {
         if (isAuthEnabled)
         {
@@ -53,17 +55,18 @@ namespace ESP_CONFIG_PAGE_LOGGING
                 {
                     if (isText)
                     {
-                        socket.text(connectedClients[i]->id, buffer, size);
+                        server.sendTXT(connectedClients[i]->id, buffer, size);
                     }
                     else
                     {
-                        socket.binary(connectedClients[i]->id, buffer, size);
+                        server.sendBIN(connectedClients[i]->id, buffer, size);
                     }
                 }
             }
-        } else
+        }
+        else
         {
-            socket.textAll(buffer, size);
+            server.broadcastTXT(buffer, size);
         }
     }
 
@@ -79,7 +82,8 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
         size_t write(const uint8_t* buffer, size_t size) override
         {
-            if (!isLoggingEnabled || (size == 2 && buffer[0] == '\r' && buffer[1] == '\n') || (size == 1 && buffer[0] == '\n'))
+            if (!isLoggingEnabled || (size == 2 && buffer[0] == '\r' && buffer[1] == '\n') || (size == 1 && buffer[0] ==
+                '\n'))
             {
                 return SERIAL_T::write(buffer, size);
             }
@@ -103,7 +107,7 @@ namespace ESP_CONFIG_PAGE_LOGGING
         }
     };
 
-    inline void enableLogging(String u, String p, Stream &serial)
+    inline void enableLogging(String u, String p, Stream& serial)
     {
         logSerial = &serial;
 
@@ -118,15 +122,16 @@ namespace ESP_CONFIG_PAGE_LOGGING
             password = p;
 
             isAuthEnabled = true;
-            socket.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len)
+
+            server.onEvent([](uint8_t client, WStype_t type, uint8_t* payload, size_t length)
             {
-                if (type == WS_EVT_CONNECT)
+                if (type == WStype_CONNECTED)
                 {
                     for (uint8_t i = 0; i < MAX_CLIENTS; i++)
                     {
                         if (connectedClients[i] == nullptr)
                         {
-                            connectedClients[i] = new ConnectedClient(client->id(), millis(), false);
+                            connectedClients[i] = new ConnectedClient(client, millis(), false);
 
                             if (retentionEnabled)
                             {
@@ -138,7 +143,7 @@ namespace ESP_CONFIG_PAGE_LOGGING
                                 file.read(buf, file.size());
                                 file.close();
 
-                                client->text(buf, sizeof(buf));
+                                server.sendTXT(client, buf, sizeof(buf));
                                 logFile = LittleFS.open(logFilePath, "a");
                                 retentionEnabled = true;
                             }
@@ -146,37 +151,25 @@ namespace ESP_CONFIG_PAGE_LOGGING
                         }
                     }
 
-                    client->close(1, "Capacity exceeded");
+                    server.sendTXT(client, "Capacity exceeded");
+                    server.disconnect(client);
                 }
-                else if (type == WS_EVT_DISCONNECT)
+                else if (type == WStype_TEXT)
                 {
-                    for (uint8_t i = 0; i < MAX_CLIENTS; i++)
-                    {
-                        if (connectedClients[i] != nullptr && client->id() == connectedClients[i]->id)
-                        {
-                            delete connectedClients[i];
-                            connectedClients[i] = nullptr;
-                        }
-                    }
-                }
-                else if (type == WS_EVT_DATA)
-                {
-                    data[len] = 0;
+                    unsigned int usernameLength = username.length();
+                    unsigned int passLength = password.length();
 
-                    int usernameLength = username.length();
-                    int passLength = password.length();
-
-                    if (len-6-passLength < usernameLength)
+                    if (length - 6 - passLength < usernameLength)
                     {
                         return;
                     }
 
-                    if (len-6-usernameLength < passLength)
+                    if (length - 6 - usernameLength < passLength)
                     {
                         return;
                     }
 
-                    char* text = reinterpret_cast<char*>(data);
+                    char* text = reinterpret_cast<char*>(payload);
                     char header[5];
                     strncpy(header, text, 4);
                     header[4] = 0;
@@ -186,8 +179,8 @@ namespace ESP_CONFIG_PAGE_LOGGING
                         return;
                     }
 
-                    char user[usernameLength+1];
-                    strncpy(user, text+5, usernameLength);
+                    char user[usernameLength + 1];
+                    strncpy(user, text + 5, usernameLength);
                     user[usernameLength] = 0;
 
                     if (strcmp(user, username.c_str()) != 0)
@@ -195,8 +188,8 @@ namespace ESP_CONFIG_PAGE_LOGGING
                         return;
                     }
 
-                    char pass[passLength+1];
-                    strncpy(pass, text+6+usernameLength, passLength);
+                    char pass[passLength + 1];
+                    strncpy(pass, text + 6 + usernameLength, passLength);
                     pass[passLength] = 0;
 
                     if (strcmp(pass, password.c_str()) != 0)
@@ -206,37 +199,47 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
                     for (uint8_t i = 0; i < MAX_CLIENTS; i++)
                     {
-                        if (connectedClients[i] != nullptr && connectedClients[i]->id == client->id())
+                        if (connectedClients[i] != nullptr && connectedClients[i]->id == client)
                         {
                             connectedClients[i]->authed = true;
                             break;
                         }
                     }
                 }
+                else if (type == WStype_DISCONNECTED)
+                {
+                    for (uint8_t i = 0; i < MAX_CLIENTS; i++)
+                    {
+                        if (connectedClients[i] != nullptr && client == connectedClients[i]->id)
+                        {
+                            delete connectedClients[i];
+                            connectedClients[i] = nullptr;
+                        }
+                    }
+                }
             });
         }
 
-        server.addHandler(&socket);
         server.begin();
         isLoggingEnabled = true;
     }
 
-    inline void enableLogging(Stream &serial)
+    inline void enableLogging(Stream& serial)
     {
         enableLogging(String(), String(), serial);
     }
 
     inline void disableLogging()
     {
-        server.end();
+        server.close();
         isLoggingEnabled = false;
     }
 
     inline void loop()
     {
+        server.loop();
         if (millis() - lastClean > 2000)
         {
-            socket.cleanupClients();
             sendDataToClients(pingMessage, 1, false);
 
             if (retentionEnabled && logFile)
@@ -248,12 +251,14 @@ namespace ESP_CONFIG_PAGE_LOGGING
             {
                 for (uint8_t i = 0; i < MAX_CLIENTS; i++)
                 {
-                    if (connectedClients[i] != nullptr && !connectedClients[i]->authed && millis() - connectedClients[i]->connectedTime > 5000)
+                    if (connectedClients[i] != nullptr && !connectedClients[i]->authed && millis() - connectedClients[i]
+                        ->connectedTime > 5000)
                     {
-                        auto client = socket.client(connectedClients[i]->id);
-                        if (client != nullptr)
+                        auto client = connectedClients[i]->id;
+                        if (server.clientIsConnected(client))
                         {
-                            socket.client(connectedClients[i]->id)->close(2, "Authentication timeout.");
+                            server.sendTXT(client, "Auth timeout");
+                            server.disconnect(client);
                         }
                     }
                 }

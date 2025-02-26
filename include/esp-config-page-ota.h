@@ -7,20 +7,18 @@
 
 namespace ESP_CONFIG_PAGE
 {
-    inline const char* getUpdateErrorStr()
-    {
+
 #ifdef ESP32
-        return Update.errorString();
+#define GET_UPDATE_ERROR_STR Update.errorString()
 #elif ESP8266
-        return Update.getErrorString().c_str();
+#define GET_UPDATE_ERROR_STR Update.getErrorString().c_str()
 #endif
-    }
 
     inline void ota(bool isFilesystem)
     {
-        LOGN("OTA upload receiving, starting update process.");
+        LOGN("OTA upload received, starting update process.");
 
-#ifdef ENABLE_LOGGING
+#ifdef ENABLE_LOGGING_MODULE
         ESP_CONFIG_PAGE_LOGGING::disableLogging();
 #endif
 
@@ -61,7 +59,7 @@ namespace ESP_CONFIG_PAGE
             {
                 // start with max available size
                 LOGN("Error when starting update.");
-                server->send(400, "text/plain", getUpdateErrorStr());
+                server->send(400, "text/plain", GET_UPDATE_ERROR_STR);
             }
         }
         else if (upload.status == UPLOAD_FILE_WRITE)
@@ -70,7 +68,7 @@ namespace ESP_CONFIG_PAGE
             if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
             {
                 LOGN("Error when writing update.");
-                server->send(400, "text/plain", getUpdateErrorStr());
+                server->send(400, "text/plain", GET_UPDATE_ERROR_STR);
             }
         }
         else if (upload.status == UPLOAD_FILE_END)
@@ -83,7 +81,7 @@ namespace ESP_CONFIG_PAGE
             else
             {
                 LOGN("Error finishing update.");
-                server->send(400, "text/plain", getUpdateErrorStr());
+                server->send(400, "text/plain", GET_UPDATE_ERROR_STR);
             }
         }
         yield();
