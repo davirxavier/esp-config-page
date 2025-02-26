@@ -893,7 +893,7 @@
         FILE_BROWSER: {
             name: 'File Browser',
             title: 'FILE BROWSER',
-            onChange: () => {}
+            onChange: () => updateFiles()
         },
         CUSTOM_ACTIONS: {
             name: 'Actions',
@@ -932,6 +932,10 @@
     loadedModules.push(moduleTypes.WIRELESS);
     <!--END-WIRELESS-->
 
+    <!--MARKER-FILES-->
+    loadedModules.push(moduleTypes.FILE_BROWSER);
+    <!--END-FILES-->
+
     <!--MARKER-CA-->
     loadedModules.push(moduleTypes.CUSTOM_ACTIONS);
     <!--END-CA-->
@@ -939,10 +943,6 @@
     <!--MARKER-ENV-->
     loadedModules.push(moduleTypes.ENV_VARS);
     <!--END-ENV-->
-
-    <!--MARKER-FILES-->
-    loadedModules.push(moduleTypes.FILE_BROWSER);
-    <!--END-FILES-->
 
     moduleSelSpan.innerText = loadedModules[0].name;
     moduleSelSpan.classList.add('select');
@@ -964,6 +964,8 @@
         if (!ignoreEvent && m.onChange) {
             m.onChange(m, i, span);
         }
+
+        sessionStorage.setItem('tab', i);
     }
 
     loadedModules.forEach((m, i) => {
@@ -974,7 +976,10 @@
         moduleSel.appendChild(span);
     });
 
-    changeModule(loadedModules[0], 0, moduleSel.children.item(0));
+    const tabFromStorage = parseInt(sessionStorage.getItem('tab') || "0");
+    setTimeout(() => {
+        changeModule(loadedModules[tabFromStorage], tabFromStorage, moduleSel.children.item(tabFromStorage+1));
+    }, 100);
 </script>
 </body>
 </html>
