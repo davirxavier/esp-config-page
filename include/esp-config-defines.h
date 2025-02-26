@@ -11,9 +11,6 @@
 #include "LittleFS.h"
 #include "std-util.h"
 
-#define VALIDATE_AUTH() if (!ESP_CONFIG_PAGE::validateAuth()) return
-#define REGISTER_SERVER_METHOD(path, method, fn) VALIDATE_AUTH(); server->on(path, method, fn)
-
 #define ENABLE_LOGGING
 #ifdef ENABLE_LOGGING
 #define LOGH() Serial.print("[ESP-CONFIG-PAGE] ")
@@ -25,6 +22,9 @@
 #define LOGN(str)
 #define LOGF(str, p...)
 #endif
+
+#define VALIDATE_AUTH() if (!ESP_CONFIG_PAGE::validateAuth()) return
+#define REGISTER_SERVER_METHOD(path, method, fn) VALIDATE_AUTH(); LOGF("Received request: %s\n", path); server->on(path, method, fn)
 
 namespace ESP_CONFIG_PAGE
 {

@@ -180,6 +180,8 @@ namespace ESP_CONFIG_PAGE
      */
     inline void addAttribute(Attribute* attribute)
     {
+        LOGF("Adding new attribute: %s\n", attribute->key);
+
         if (attributeCount + 1 > maxAttributes)
         {
             maxAttributes = maxAttributes == 0 ? 1 : ceil(maxAttributes * 1.5);
@@ -196,9 +198,11 @@ namespace ESP_CONFIG_PAGE
      */
     inline void setAndUpdateStorage(KeyValueStorage *storage)
     {
+        LOGN("Setting up attribute storage.");
         attributeStorage = storage;
         if (attributeStorage == nullptr)
         {
+            LOGN("No attribute storage found.");
             return;
         }
 
@@ -216,6 +220,7 @@ namespace ESP_CONFIG_PAGE
                 continue;
             }
 
+            LOGF("Found value saved for attribute %s: %s\n", attribute->key, value);
             attribute->deserializeValue(value);
             free(value);
         }

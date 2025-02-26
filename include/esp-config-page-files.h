@@ -85,14 +85,14 @@ namespace ESP_CONFIG_PAGE
 #ifdef ESP32
         if (!LittleFS.begin(false /* false: Do not format if mount failed */))
         {
-            Serial.println("Failed to mount LittleFS");
+            LOGN("Failed to mount LittleFS");
             if (!LittleFS.begin(true /* true: format */))
             {
-                Serial.println("Failed to format LittleFS");
+                LOGN("Failed to format LittleFS");
             }
             else
             {
-                Serial.println("LittleFS formatted successfully");
+                LOGN("LittleFS formatted successfully");
             }
         }
 #elif ESP8266

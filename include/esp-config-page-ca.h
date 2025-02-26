@@ -39,7 +39,7 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        CustomAction* ca = NULL;
+        CustomAction* ca = nullptr;
         String body = server->arg(F("plain"));
 
         for (uint8_t i = 0; i < customActionsCount; i++)
@@ -50,13 +50,15 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
-        if (ca != NULL)
+        if (ca != nullptr)
         {
+            LOGF("Triggering custom action: %s\n", ca->key.c_str());
             ca->handler(*server);
+            server->send(200);
         }
         else
         {
-            server->send(200);
+            server->send(404);
         }
     }
 

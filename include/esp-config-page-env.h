@@ -132,7 +132,6 @@ namespace ESP_CONFIG_PAGE
 
     inline void saveEnv()
     {
-
         if (envVarCount == 0)
         {
             server->send(200);
@@ -166,7 +165,7 @@ namespace ESP_CONFIG_PAGE
             for (uint8_t j = 0; j < envVarCount; j++)
             {
                 EnvVar* ev = envVars[j];
-                if (ev == NULL)
+                if (ev == nullptr)
                 {
                     break;
                 }
@@ -179,12 +178,12 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
-        if (saveEnvVarsCallback != NULL)
+        if (saveEnvVarsCallback != nullptr)
         {
             saveEnvVarsCallback(envVars, envVarCount);
         }
 
-        if (envVarStorage != NULL)
+        if (envVarStorage != nullptr)
         {
             for (uint8_t i = 0; i < envVarCount; i++)
             {
