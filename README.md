@@ -33,8 +33,8 @@ void setup() {
     delay(2500);
     Serial.println("Started.");
 
-    // Setup webpage function
-    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST");
+    // Setup webpage modules
+    ESP_CONFIG_PAGE::initModules(&server, "admin", "admin", "ESP32-TEST3");
 
     // Begin webserver
     server.begin();
@@ -74,8 +74,8 @@ void setup() {
     // Try to reconnect automatically if you already configured your board
     ESP_CONFIG_PAGE::tryConnectWifi(false);
 
-    // Setup webpage function
-    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST");
+    // Setup webpage modules
+    ESP_CONFIG_PAGE::initModules(&server, "admin", "admin", "ESP32-TEST3");
 
     // Begin webserver
     server.begin();
@@ -142,8 +142,8 @@ void setup() {
     // Setup storage and recover saved environment variables, if there are any
     ESP_CONFIG_PAGE::setAndUpdateEnvVarStorage(storage);
 
-    // Setup webpage function
-    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST");
+    // Setup webpage modules
+    ESP_CONFIG_PAGE::initModules(&server, "admin", "admin", "ESP32-TEST3");
 
     server.on("/test-auth", HTTP_POST, []() {
         String body = server.arg("plain");
@@ -199,8 +199,8 @@ void setup() {
     // Try to reconnect automatically if you already configured your board
     ESP_CONFIG_PAGE::tryConnectWifi(false);
 
-    // Setup webpage function
-    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST");
+    // Setup webpage modules
+    ESP_CONFIG_PAGE::initModules(&server, "admin", "admin", "ESP32-TEST3");
 
     // Add a custom action to the webpage.
     // This action will appear as a button on the webpage and trigger the action defined below.
@@ -267,8 +267,8 @@ void setup() {
     ESP_CONFIG_PAGE::addEnvVar(new ESP_CONFIG_PAGE::EnvVar("teste2", ""));
     ESP_CONFIG_PAGE::setAndUpdateEnvVarStorage(new ESP_CONFIG_PAGE::LittleFSEnvVarStorage("/env.cfg"));
 
-    // Setup webpage function
-    ESP_CONFIG_PAGE::setup(server, "admin", "admin", "ESP32-TEST3");
+    // Setup webpage modules
+    ESP_CONFIG_PAGE::initModules(&server, "admin", "admin", "ESP32-TEST3");
 
     ESP_CONFIG_PAGE::addCustomAction("Restart", [](ESP_CONFIG_PAGE::WEBSERVER_T &server)
     {
@@ -283,7 +283,7 @@ void setup() {
     ESP_CONFIG_PAGE_LOGGING::enableLogging("admin", "admin", webserial);
 
     // Enable log retention with 1kb of maximum log size (optional)
-    ESP_CONFIG_PAGE_LOGGING::setLogRetention("/logs.txt", 1000);
+    ESP_CONFIG_PAGE_LOGGING::setLogRetention("/logs.txt", 1024);
 }
 
 void loop() {
@@ -324,3 +324,12 @@ python update_modules.py --wireless
 This will automatically update the webpage's html file with only the modules you want to use.
 
 (The python script needs Rust and Cargo to be installed in your machine to run).
+
+You will then need to change your initModules function call, passing as arguments only the modules you need:
+
+````c++
+...
+ESP_CONFIG_PAGE::Modules enabledModules[] = {ESP_CONFIG_PAGE::OTA, ESP_CONFIG_PAGE::WIRELESS};
+ESP_CONFIG_PAGE::initModules(enabledModules, 2, &server, "admin", "admin", "ESP32-TEST3");
+...
+````
