@@ -4,6 +4,7 @@ import re
 import argparse
 
 modules = ['ota', 'wireless', 'ca', 'env', 'files', 'logging']
+special = {'logging': 'ecplog'}
 
 parser = argparse.ArgumentParser(prog="esp-config-page html build tool.",
                                  description="Python script that can be used to manage the modules that will be included in the config page html.")
@@ -20,8 +21,6 @@ with open('../include/config_page.html', encoding="utf-8") as f:
         v = args.__dict__[e]
         if not v:
             read_data = re.sub(f'<!--MARKER-{e.upper()}-->?(.*?)<!--END-{e.upper()}-->', '', read_data, flags=re.DOTALL)
-
-    print(read_data)
 
     minified = minify_html.minify(read_data, minify_css=True, minify_js=True, remove_bangs=True,
                                   remove_processing_instructions=True)
@@ -47,4 +46,18 @@ const uint8_t ESP_CONFIG_HTML[] PROGMEM = {''' % len(compressed))
     f.write("\n#endif")
 
 
-print('Written new html')
+with open('../include/esp-config-defines.h', 'w') as f:
+    f.write('''#ifndef ESP_CONFIG_PAGE_DEFINES
+#define ESP_CONFIG_PAGE_DEFINES\n\n''')
+
+    for e in args.__dict__:
+        v = args.__dict__[e]
+        if v:
+            spec = special.get(e)
+            text = spec and spec.upper() or e.upper()
+            f.write(f"#define ENABLE_{text}\n")
+
+    f.write("\n#endif")
+
+
+print('Updated enabled modules successfully.')
