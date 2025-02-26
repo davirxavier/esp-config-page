@@ -30,6 +30,8 @@ namespace ESP_CONFIG_PAGE
                 nextFile.close();
             }
         }
+
+        file.close();
 #elif ESP8266
         Dir dir = LittleFS.openDir(path);
         while (dir.next()) {
@@ -99,9 +101,9 @@ namespace ESP_CONFIG_PAGE
         LittleFS.begin();
 #endif
 
-        REGISTER_SERVER_METHOD(F("/config/files"), HTTP_POST, getFiles);
-        REGISTER_SERVER_METHOD(F("/config/files/download"), HTTP_POST, downloadFile);
-        REGISTER_SERVER_METHOD(F("/config/files/delete"), HTTP_POST, deleteFile);
+        addServerHandler((char*) F("/config/files"), HTTP_POST, getFiles);
+        addServerHandler((char*) F("/config/files/download"), HTTP_POST, downloadFile);
+        addServerHandler((char*) F("/config/files/delete"), HTTP_POST, deleteFile);
     }
 }
 

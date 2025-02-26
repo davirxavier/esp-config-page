@@ -101,8 +101,8 @@ namespace ESP_CONFIG_PAGE
 
     inline void enableCustomActionsModule()
     {
-        REGISTER_SERVER_METHOD(F("/config/customa"), HTTP_POST, tiggerCustomAction);
-        REGISTER_SERVER_METHOD(F("/config/customa"), HTTP_GET, getCa);
+        addServerHandler((char*) F("/config/customa"), HTTP_POST, tiggerCustomAction);
+      addServerHandler((char*) F("/config/customa"), HTTP_GET, getCa);
     }
 }
 

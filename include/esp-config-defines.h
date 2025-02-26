@@ -24,7 +24,6 @@
 #endif
 
 #define VALIDATE_AUTH() if (!ESP_CONFIG_PAGE::validateAuth()) return
-#define REGISTER_SERVER_METHOD(path, method, fn) VALIDATE_AUTH(); LOGF("Received request: %s\n", path); server->on(path, method, fn)
 
 namespace ESP_CONFIG_PAGE
 {
@@ -84,12 +83,29 @@ namespace ESP_CONFIG_PAGE
 
     Stream* serial = &Serial;
 
+    PROGMEM char httpMethodMapping[5][8] = {"DELETE", "GET", "HEAD", "POST", "PUT"};
+
+    inline void addServerHandler(char *uri, HTTPMethod method, std::function<void(void)> fn)
+    {
+        server->on(uri, method, [uri, method, fn]()
+        {
+            VALIDATE_AUTH();
+            LOGF("Received request: %s - %s.\n", uri, (method < sizeof(httpMethodMapping) ? httpMethodMapping[method] : ""));
+            fn();
+        });
+    }
+
     String name;
     const char escapeChars[] = {':', ';', '+', '\0'};
     const char escaper = '|';
 
     inline int sizeWithEscaping(const char* str)
     {
+        if (str == nullptr)
+        {
+            return 0;
+        }
+
         int len = strlen(str);
         int escapedCount = 0;
 
@@ -295,6 +311,25 @@ namespace ESP_CONFIG_PAGE
          */
         LittleFSKeyValueStorage(const char *folderPath)
         {
+            LOGN("Trying to mount LittleFS.");
+#ifdef ESP32
+            if (!LittleFS.begin(false /* false: Do not format if mount failed */))
+            {
+                LOGN("Failed to mount LittleFS");
+                if (!LittleFS.begin(true /* true: format */))
+                {
+                    LOGN("Failed to format LittleFS");
+                }
+                else
+                {
+                    LOGN("LittleFS formatted successfully");
+                    ESP.restart();
+                }
+            }
+#elif ESP8266
+            LittleFS.begin();
+#endif
+
 #ifdef ESP32
             bool pathStartsWithSlash = folderPath[0] == '/';
             this->folderPath = (char*) malloc(strlen(folderPath) + (pathStartsWithSlash ? 0 : 1) + 1);
@@ -305,6 +340,11 @@ namespace ESP_CONFIG_PAGE
             this->folderPath = (char*) malloc(strlen(folderPath) + 1);
             strcpy(this->folderPath, folderPath);
 #endif
+
+            if (!LittleFS.exists(this->folderPath))
+            {
+                LOGF("Path %s does not exist, creating: %s.\n", this->folderPath, LittleFS.mkdir(this->folderPath) ? "true" : "false");
+            }
         }
 
         void save(const char *key, const char *value) override
@@ -336,10 +376,15 @@ namespace ESP_CONFIG_PAGE
             }
 
             File file = LittleFS.open(filePath, "r");
-            const char *fileStr = file.readString().c_str();
+            char fileStr[file.size()+1];
+            file.readBytes(fileStr, file.size());
+            fileStr[file.size()] = 0;
             file.close();
 
-            return strcpy((char*) malloc(strlen(fileStr)+1), fileStr);
+            LOGF("Found value %s for key %s.\n", fileStr, key);
+            char *ret = (char*) malloc(strlen(fileStr)+1);
+            strcpy(ret, fileStr);
+            return ret;
         }
 
     protected:

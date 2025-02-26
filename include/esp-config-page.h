@@ -59,6 +59,12 @@ namespace ESP_CONFIG_PAGE
         ESP_CONFIG_PAGE::server->send(200, "text/plain", buf);
     }
 
+    void getConfigPage()
+    {
+        ESP_CONFIG_PAGE::server->sendHeader("Content-Encoding", "gzip");
+        ESP_CONFIG_PAGE::server->send_P(200, "text/html", (const char*) ESP_CONFIG_HTML, ESP_CONFIG_HTML_LEN);
+    }
+
     /**
      * Init chosen modules for the config page module.
      *
@@ -88,20 +94,14 @@ namespace ESP_CONFIG_PAGE
         ESP_CONFIG_PAGE::password = password;
         ESP_CONFIG_PAGE::nodeName = nodeName;
 
+        name = nodeName;
+
+        addServerHandler((char*) F("/config"), HTTP_GET, getConfigPage);
+        addServerHandler((char*) F("/config/info"), HTTP_GET, getInfo);
         server->onNotFound([]()
         {
             ESP_CONFIG_PAGE::server->send(404, "text/html", F("<html><head><title>Page not found</title></head><body><p>Page not found.</p> <a href=\"/config\">Go to root.</a></body></html>"));
         });
-
-        name = nodeName;
-
-        REGISTER_SERVER_METHOD(F("/config"), HTTP_GET, []()
-        {
-            ESP_CONFIG_PAGE::server->sendHeader("Content-Encoding", "gzip");
-            ESP_CONFIG_PAGE::server->send_P(200, "text/html", (const char*) ESP_CONFIG_HTML, ESP_CONFIG_HTML_LEN);
-        });
-
-        REGISTER_SERVER_METHOD(F("/config/info"), HTTP_GET, getInfo);
 
         for (uint8_t i = 0; i < moduleCount; i++)
         {
