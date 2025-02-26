@@ -41,7 +41,7 @@ namespace ESP_CONFIG_PAGE
         for (uint8_t i = 0; i < envVarCount; i++)
         {
             EnvVar* ev = envVars[i];
-            infoSize += sizeWithEscaping(ev->key) + sizeWithEscaping(ev->value) + 4;
+            infoSize += 6 + strlen(ev->key) + strlen(ev->value);
         }
 
         return infoSize;
@@ -112,18 +112,20 @@ namespace ESP_CONFIG_PAGE
         }
 
         String body = server->arg("plain");
-        unsigned int maxLineLength = getMaxLineLength(body.c_str());
-        char currentKey[maxLineLength];
+
+        unsigned int maxLineLength = getMaxLineLength(body.c_str()) + 1;
         char buf[maxLineLength];
         unsigned int currentChar = 0;
         unsigned int bodyLen = body.length();
+
+        char currentKey[maxLineLength];
         bool isKey = true;
 
         for (unsigned int i = 0; i < bodyLen; i++)
         {
             char c = body[i];
 
-            if (c == '\n' || c == '\r')
+            if (c == '\n')
             {
                 buf[currentChar] = 0;
 
@@ -135,10 +137,11 @@ namespace ESP_CONFIG_PAGE
                 {
                     for (uint8_t j = 0; j < envVarCount; j++)
                     {
-                        EnvVar *ev = envVars[j];
-                        if (ev != nullptr && strcmp(ev->key, currentKey) == 0)
+                        EnvVar *var = envVars[j];
+                        if (var != nullptr && strcmp(var->key, currentKey))
                         {
                             envVarStorage->save(currentKey, buf);
+                            break;
                         }
                     }
                 }
@@ -154,7 +157,7 @@ namespace ESP_CONFIG_PAGE
         }
 
         server->send(200);
-        delay(100);
+        delay(200);
 
 #ifdef ESP32
         ESP.restart();
@@ -166,27 +169,26 @@ namespace ESP_CONFIG_PAGE
     inline void getEnv()
     {
         char buf[envSize()+1];
+        buf[0] = 0;
+
         for (uint8_t i = 0; i < envVarCount; i++)
         {
             EnvVar* ev = envVars[i];
 
-            char bufKey[sizeWithEscaping(ev->key)];
-            escape(bufKey, ev->key);
-
-            strcat(buf, bufKey);
-            strcat(buf, ":");
-
-            if (ev->value == nullptr)
+            if (ev == nullptr)
             {
-                strcat(buf, ":;");
+                continue;
             }
-            else
+
+            strcat(buf, ev->key);
+            strcat(buf, "\n");
+
+            if (ev->value != nullptr)
             {
-                char bufVal[sizeWithEscaping(ev->value)];
-                escape(bufVal, ev->value);
-                strcat(buf, bufVal);
-                strcat(buf, ":;");
+                strcat(buf, ev->value);
             }
+
+            strcat(buf, "\n");
         }
 
         server->send(200, "text/plain", buf);

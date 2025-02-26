@@ -51,7 +51,6 @@ namespace ESP_CONFIG_PAGE
                 if (currentLength > maxLength)
                 {
                     maxLength = currentLength;
-                    break;
                 }
 
                 currentLength = 0;
@@ -98,78 +97,6 @@ namespace ESP_CONFIG_PAGE
     String name;
     const char escapeChars[] = {':', ';', '+', '\0'};
     const char escaper = '|';
-
-    inline int sizeWithEscaping(const char* str)
-    {
-        if (str == nullptr)
-        {
-            return 0;
-        }
-
-        int len = strlen(str);
-        int escapedCount = 0;
-
-        for (int i = 0; i < len; i++)
-        {
-            const char c = str[i];
-            if (strchr(escapeChars, c))
-            {
-                escapedCount++;
-            }
-        }
-
-        return escapedCount + len + 1;
-    }
-
-    inline void unescape(char buf[], const char* source)
-    {
-        unsigned int len = strlen(source);
-        bool escaped = false;
-        int bufIndex = 0;
-
-        for (unsigned int i = 0; i < len; i++)
-        {
-            const char c = source[i];
-
-            if (c == escaper && !escaped)
-            {
-                escaped = true;
-            }
-            else if (strchr(escapeChars, c) && !escaped)
-            {
-                buf[bufIndex] = c;
-                bufIndex++;
-            }
-            else
-            {
-                escaped = false;
-                buf[bufIndex] = c;
-                bufIndex++;
-            }
-        }
-
-        buf[bufIndex] = '\0';
-    }
-
-    inline void escape(char buf[], const char* source)
-    {
-        int len = strlen(source);
-        int bufIndex = 0;
-
-        for (int i = 0; i < len; i++)
-        {
-            if (strchr(escapeChars, source[i]))
-            {
-                buf[bufIndex] = escaper;
-                bufIndex++;
-            }
-
-            buf[bufIndex] = source[i];
-            bufIndex++;
-        }
-
-        buf[bufIndex] = '\0';
-    }
 
     inline uint8_t countChar(const char str[], const char separator)
     {
@@ -381,7 +308,6 @@ namespace ESP_CONFIG_PAGE
             fileStr[file.size()] = 0;
             file.close();
 
-            LOGF("Found value %s for key %s.\n", fileStr, key);
             char *ret = (char*) malloc(strlen(fileStr)+1);
             strcpy(ret, fileStr);
             return ret;
