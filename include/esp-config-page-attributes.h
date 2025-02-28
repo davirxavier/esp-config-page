@@ -3,12 +3,14 @@
 
 namespace ESP_CONFIG_PAGE
 {
+    KeyValueStorage *attributeStorage = nullptr;
+
     enum AttributeType
     {
-        TEXT,
-        BOOL,
-        INT,
-        FLOAT,
+        ATTR_TEXT,
+        ATTR_BOOL,
+        ATTR_INT,
+        ATTR_FLOAT,
     };
 
     union AttributeValue {
@@ -16,12 +18,21 @@ namespace ESP_CONFIG_PAGE
         int i;
         float f;
         bool b;
+
+        AttributeValue()
+        {
+            b = false;
+        }
+        explicit AttributeValue(char *str) : str(str) {}
+        explicit AttributeValue(int i) : i(i) {}
+        explicit AttributeValue(float f) : f(f) {}
+        explicit AttributeValue(bool b) : b(b) {}
     };
 
     class Attribute
     {
     public:
-        Attribute(const char *key, const char *nameStr, const AttributeType type) : key(key), name(nameStr), type(type), value(), onChange(nullptr)
+        Attribute(const char *key, const char *nameStr, const AttributeType type) : key(key), name(nameStr), type(type), onChange(nullptr)
         {
             this->isStrDinamic = false;
         }
@@ -32,9 +43,14 @@ namespace ESP_CONFIG_PAGE
             {
                 free(this->value.str);
             }
-        };
+        }
 
-        void setValue(const AttributeValue value)
+        void set(const AttributeValue value)
+        {
+            this->set(value, true);
+        }
+
+        void set(const AttributeValue value, bool save)
         {
             if (this->isStrDinamic)
             {
@@ -48,6 +64,13 @@ namespace ESP_CONFIG_PAGE
             {
                 onChange(value);
             }
+
+            if (save && attributeStorage != nullptr)
+            {
+                char buf[this->serializedValueSize()];
+                serializeValue(buf);
+                attributeStorage->save(this->key, buf);
+            }
         }
 
         AttributeValue getValue()
@@ -59,19 +82,19 @@ namespace ESP_CONFIG_PAGE
         {
             switch (this->type)
             {
-            case INT:
+            case ATTR_INT:
                 {
                     return snprintf(NULL, 0, "%d", this->value.i);
                 }
-            case FLOAT:
+            case ATTR_FLOAT:
                 {
                     return snprintf(NULL, 0, "%f", this->value.f);
                 }
-            case BOOL:
+            case ATTR_BOOL:
                 {
                     return 2;
                 }
-            case TEXT:
+            case ATTR_TEXT:
                 {
                     return strlen(this->value.str) + 1;
                 }
@@ -84,23 +107,23 @@ namespace ESP_CONFIG_PAGE
         {
             switch (this->type)
             {
-            case INT:
+            case ATTR_INT:
                 {
                     sprintf(out, "%d", this->value.i);
                     return true;
                 }
-            case FLOAT:
+            case ATTR_FLOAT:
                 {
                     sprintf(out, "%f", this->value.f);
                     return true;
                 }
-            case BOOL:
+            case ATTR_BOOL:
                 {
                     out[0] = this->value.b ? 't' : 'f';
                     out[1] = 0;
                     return true;
                 }
-            case TEXT:
+            case ATTR_TEXT:
                 {
                     strcpy(out, this->value.str);
                     return true;
@@ -117,25 +140,25 @@ namespace ESP_CONFIG_PAGE
 
             switch (this->type)
             {
-            case INT:
+            case ATTR_INT:
                 {
                     sscanf(in, "%d", &newVal.i);
                     changed = true;
                     break;
                 }
-            case FLOAT:
+            case ATTR_FLOAT:
                 {
                     sscanf(in, "%f", &newVal.f);
                     changed = true;
                     break;
                 }
-            case BOOL:
+            case ATTR_BOOL:
                 {
                     newVal.b = in[0] == 't';
                     changed = true;
                     break;
                 }
-            case TEXT:
+            case ATTR_TEXT:
                 {
                     newVal.str = (char*) malloc(strlen(in)+1);
                     strcpy(newVal.str, in);
@@ -146,10 +169,10 @@ namespace ESP_CONFIG_PAGE
 
             if (changed)
             {
-                setValue(newVal);
+                set(newVal, false);
             }
 
-            if (type == TEXT)
+            if (type == ATTR_TEXT)
             {
                 this->isStrDinamic = true;
             }
@@ -173,7 +196,6 @@ namespace ESP_CONFIG_PAGE
     Attribute **attributes;
     uint8_t attributeCount = 0;
     uint16_t maxAttributes = 0;
-    KeyValueStorage *attributeStorage = nullptr;
 
     /**
      *  Adds an attribute to the webpage.
@@ -196,7 +218,7 @@ namespace ESP_CONFIG_PAGE
      * Sets the storage for attributes and recovers saved attributes in the filesystem.
      * @param storage Storage to be used in the attributes module.
      */
-    inline void setAndUpdateStorage(KeyValueStorage *storage)
+    inline void setAndUpdateAttributeStorage(KeyValueStorage *storage)
     {
         LOGN("Setting up attribute storage.");
         attributeStorage = storage;
