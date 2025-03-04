@@ -41,7 +41,7 @@ namespace ESP_CONFIG_PAGE
         for (uint8_t i = 0; i < envVarCount; i++)
         {
             EnvVar* ev = envVars[i];
-            infoSize += 6 + strlen(ev->key) + strlen(ev->value);
+            infoSize += 6 + strlen(ev->key) + (ev->value != nullptr ? strlen(ev->value) : 0);
         }
 
         return infoSize;

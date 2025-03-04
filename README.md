@@ -244,8 +244,11 @@ If you want, you can also call the setLogRetention function to enable log retent
 // Webserver instance
 ESP_CONFIG_PAGE::WEBSERVER_T server(80);
 
-// Web serial instance
+// Web serial instance (use this for ESP32)
 ESP_CONFIG_PAGE_LOGGING::ConfigPageSerial webserial;
+
+// Web serial instance (use this for ESP8266)
+ESP_CONFIG_PAGE_LOGGING::ConfigPageSerial webserial(Serial);
 
 unsigned long last = 0;
 
