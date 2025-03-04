@@ -1141,12 +1141,16 @@
         OTA_FIRMWARE: {
             name: 'OTA Firmware',
             title: 'UPDATE FIRMWARE',
-            onChange: () => {}
+            onChange: () => {
+                isUploadFirmware = true;
+            }
         },
         OTA_FILESYSTEM: {
             name: 'OTA Filesystem',
             title: 'UPDATE FILESYSTEM',
-            onChange: () => {}
+            onChange: () => {
+                isUploadFirmware = false;
+            }
         },
         WIRELESS: {
             name: 'Wireless',
