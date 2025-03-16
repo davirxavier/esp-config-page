@@ -21,7 +21,7 @@ namespace ESP_CONFIG_PAGE
      */
     inline bool isWiFiReady()
     {
-        return WiFi.status() == WL_CONNECTED;
+        return WiFi.status() == WL_CONNECTED && !apStarted;
     }
 
     /**

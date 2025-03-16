@@ -74,10 +74,6 @@ namespace ESP_CONFIG_PAGE
                     continue;
                 }
 
-                if (var->value != nullptr)
-                {
-                    free(var->value);
-                }
                 var->value = value;
             }
         }

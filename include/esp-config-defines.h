@@ -194,7 +194,6 @@ namespace ESP_CONFIG_PAGE
     public:
         ~LittleFSKeyValueStorage() override
         {
-            free(this->folderPath);
         }
 
         /**
@@ -223,10 +222,8 @@ namespace ESP_CONFIG_PAGE
 #endif
 
 #ifdef ESP32
-            bool pathStartsWithSlash = folderPath[0] == '/';
-            this->folderPath = (char*) malloc(strlen(folderPath) + (pathStartsWithSlash ? 0 : 1) + 1);
-            this->folderPath[0] = '/';
-            strcpy(pathStartsWithSlash ? this->folderPath : this->folderPath+1, pathStartsWithSlash ? folderPath+1 : folderPath);
+            this->folderPath = (char*) malloc(strlen(folderPath)+1);
+            strcpy(this->folderPath, folderPath);
             LOGF("Key value storage path: %s\n", this->folderPath);
 #elif ESP8266
             this->folderPath = (char*) malloc(strlen(folderPath) + 1);
