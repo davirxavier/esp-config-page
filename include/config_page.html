@@ -258,6 +258,10 @@
             background: rgba(66, 66, 66, 0.95);
         }
 
+        .info-cont p {
+            margin-bottom: -0.1rem;
+        }
+
     </style>
 </head>
 <body style="background-color: #212121; color: #CFD8DC; font-family: sans-serif; overflow: auto">
@@ -367,11 +371,12 @@
     <p class="title-text" id="message" style="margin-top: 2rem; margin-bottom: 1.0rem; font-size: 0.93rem"></p>
 </div>
 
-<div class="cont med" style="align-items: center; gap: unset">
+<div class="cont med info-cont" style="align-items: center; gap: unset">
     <hr style="width: 100%">
-    <p class="title-text" style="margin-bottom: -0.1rem;">DEVICE ID: <span id="text-id" style="font-weight: bold"></span></p>
-    <p class="title-text" style="margin-bottom: -0.1rem;">MAC ADDRESS: <span id="text-mac" style="font-weight: bold"></span></p>
-    <p class="title-text" style="margin-bottom: -0.1rem;">FREE SPACE: <span id="text-space-free" style="font-weight: bold"></span> bytes / <span id="text-space-total" style="font-weight: bold"></span> bytes</p>
+    <p class="title-text">DEVICE ID: <span id="text-id" style="font-weight: bold"></span></p>
+    <p class="title-text">MAC ADDRESS: <span id="text-mac" style="font-weight: bold"></span></p>
+    <p class="title-text">FREE SPACE: <span id="text-space-free" style="font-weight: bold"></span> bytes / <span id="text-space-total" style="font-weight: bold"></span> bytes</p>
+    <p class="title-text">BUILD DATETIME: <span id="text-build" style="font-weight: bold"></span></p>
     <p class="title-text">FREE HEAP: <span id="text-ram" style="font-weight: bold"></span> bytes</p>
 </div>
 
@@ -729,6 +734,7 @@
                 const usedSpace = split[2];
                 const spaceTotal = split[3];
                 const freeHeap = split[4];
+                const buildTime = split[6];
 
                 document.title = name + ' - Config';
                 document.getElementById('text-id').innerText = name;
@@ -736,6 +742,7 @@
                 document.getElementById('text-space-free').innerText = usedSpace;
                 document.getElementById('text-space-total').innerText = spaceTotal;
                 document.getElementById('text-ram').innerText = freeHeap;
+                document.getElementById('text-build').innerText = buildTime;
             } else {
                 alert('Error while trying to fetch info from controller.')
             }

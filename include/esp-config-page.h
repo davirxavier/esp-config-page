@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFiUdp.h>
+#include <esp-config-page-logging.h>
 #include <esp-config-defines.h>
 #include <esp-config-page-ca.h>
 #include <esp-config-page-env.h>
@@ -36,7 +37,7 @@ namespace ESP_CONFIG_PAGE
 
         int nameLen = name.length();
         int infoSize = nameLen + WiFi.macAddress().length() + usedBytes.length() + totalBytes.length() +
-            freeHeap.length() + 64;
+            freeHeap.length() + strlen(__DATE__) + strlen(__TIME__) + 64;
 
         char buf[infoSize];
 
@@ -52,6 +53,11 @@ namespace ESP_CONFIG_PAGE
         strcat(buf, "+");
 
         strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP ? "0" : "1");
+        strcat(buf, "+");
+
+        strcat(buf, __DATE__);
+        strcat(buf, " ");
+        strcat(buf, __TIME__);
         strcat(buf, "+");
 
         ESP_CONFIG_PAGE::server->sendHeader("Authorization", ESP_CONFIG_PAGE::server->header("Authorization"));
