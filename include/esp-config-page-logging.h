@@ -231,8 +231,11 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
     inline void disableLogging()
     {
-        server.close();
-        isLoggingEnabled = false;
+        if (isLoggingEnabled)
+        {
+            server.close();
+            isLoggingEnabled = false;
+        }
     }
 
     inline void loop()

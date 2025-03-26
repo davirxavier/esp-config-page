@@ -682,26 +682,14 @@
                     }
                 };
 
-                let hasError = false;
-                let intervalId;
-                intervalId = setInterval(() => {
-                    if (hasError) {
-                        clearInterval(intervalId);
-                        return;
-                    }
+                request.upload.onload = () => {
+                    otaLoader.style.width = '100%';
 
-                    otaLoader.style.width = percent + '%';
-
-                    if(percent >= 100)
-                    {
-                        clearInterval(intervalId);
-
-                        setTimeout(() => {
-                            alert('Upload completed successfully!');
-                            location.reload();
-                        }, 650);
-                    }
-                }, 600);
+                    setTimeout(() => {
+                        alert('Upload completed successfully!');
+                        location.reload();
+                    }, 650);
+                };
 
                 request.send(formData);
 

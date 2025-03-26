@@ -79,7 +79,7 @@ namespace ESP_CONFIG_PAGE
      */
     inline void tryConnectWifi(bool force)
     {
-        tryConnectWifi(force, 30000);
+        tryConnectWifi(force, 10000);
     }
 
     inline void setWiFiCredentials(String& ssid, String& pass)

@@ -16,13 +16,12 @@ namespace ESP_CONFIG_PAGE
 
     inline void ota(bool isFilesystem)
     {
-        LOGN("OTA upload received, starting update process.");
-
-#ifdef ENABLE_LOGGING_MODULE
         ESP_CONFIG_PAGE_LOGGING::disableLogging();
-#endif
 
         HTTPUpload& upload = server->upload();
+
+        LOGF("Upload info: current size is %d, total sent size is %d, total file size is %d, status is %d, name is %s\n", upload.currentSize, upload.totalSize, upload.contentLength, upload.status, upload.name.c_str());
+
         int command = U_FLASH;
         if (isFilesystem)
         {
@@ -34,6 +33,7 @@ namespace ESP_CONFIG_PAGE
 #endif
         }
 
+        LOGF("Upload status: %d\n", upload.status);
         if (upload.status == UPLOAD_FILE_START)
         {
             LOGN("Starting OTA update.");
@@ -50,8 +50,7 @@ namespace ESP_CONFIG_PAGE
             } else {
                 maxSpace = FS_end - FS_start;
             }
-
-            Update.runAsync(true);
+            close_all_fs();
 #endif
 
             LOGF("Calculate max space is %d.\n", maxSpace);
