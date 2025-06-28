@@ -247,7 +247,7 @@ namespace ESP_CONFIG_PAGE
 #ifdef ESP32
             WiFi.mode(WIFI_MODE_STA);
 #elif ESP8266
-            WiFi.mode(WIFI_AP_STA);
+            WiFi.mode(WIFI_STA);
 #endif
         }
     }
