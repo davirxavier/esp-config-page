@@ -20,7 +20,11 @@ namespace ESP_CONFIG_PAGE
 
         HTTPUpload& upload = server->upload();
 
+#ifdef ESP32
+        LOGF("Upload info: current size is %d, total sent size is %d, status is %d, name is %s\n", upload.currentSize, upload.totalSize, upload.status, upload.name.c_str());
+#elif ESP8266
         LOGF("Upload info: current size is %d, total sent size is %d, total file size is %d, status is %d, name is %s\n", upload.currentSize, upload.totalSize, upload.contentLength, upload.status, upload.name.c_str());
+#endif
 
         int command = U_FLASH;
         if (isFilesystem)
