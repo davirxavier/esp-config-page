@@ -10,8 +10,7 @@
 
 #include "LittleFS.h"
 
-#define ENABLE_LOGGING
-#ifdef ENABLE_LOGGING
+#ifdef ESP_CONFIG_PAGE_ENABLE_LOGGING
 #define LOGH() Serial.print("[ESP-CONFIG-PAGE] ")
 #define LOG(str) LOGH(); ESP_CONFIG_PAGE::serial->print(str)
 #define LOGN(str) LOGH(); ESP_CONFIG_PAGE::serial->println(str)

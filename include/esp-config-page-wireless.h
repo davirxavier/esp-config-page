@@ -12,8 +12,16 @@ namespace ESP_CONFIG_PAGE
     IPAddress apIp = IPAddress(192, 168, 1, 1);
     String dnsName = "esp-config.local";
     int lastConnectionError = -1;
-    bool apStarted = false;
-    bool connected = false;
+    unsigned long connectionTimeoutCounter;
+    unsigned long connectionTimeoutMs = 45000;
+
+    /**
+     * Sets the wifi connection timeout in milliseconds. Default is 45 seconds.
+     */
+    inline void setConnectionTimeout(unsigned long connectionTimeoutMs)
+    {
+        ESP_CONFIG_PAGE::connectionTimeoutMs = connectionTimeoutMs;
+    }
 
     /**
      * Returns true if the wifi connection is ready or false if otherwise.
@@ -21,7 +29,7 @@ namespace ESP_CONFIG_PAGE
      */
     inline bool isWiFiReady()
     {
-        return WiFi.status() == WL_CONNECTED && !apStarted;
+        return WiFi.status() == WL_CONNECTED;
     }
 
     /**
@@ -40,18 +48,13 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-#ifdef ESP32
-        WiFi.mode(WIFI_MODE_APSTA);
-#elif ESP8266
-        WiFi.mode(WIFI_AP_STA);
-#endif
-
+        WiFi.mode(WIFI_STA);
         WiFi.setAutoReconnect(true);
         WiFi.persistent(true);
 
         if (force)
         {
-            WiFi.disconnect(false, true);
+            WiFi.disconnect(false, false);
             WiFi.begin(wifiSsid, wifiPass);
         }
         else
@@ -63,7 +66,12 @@ namespace ESP_CONFIG_PAGE
         int result = WiFi.waitForConnectResult(timeoutMs);
         LOGF("Connection result: %d\n", result);
 
-        if (result != WL_CONNECTED)
+        if (result == WL_CONNECTED)
+        {
+            LOGF("Connected to AP successfully, IP address: %s\n", WiFi.localIP().toString().c_str());
+            lastConnectionError = -1;
+        }
+        else
         {
             LOGN("Connection error.");
             lastConnectionError = result;
@@ -82,7 +90,7 @@ namespace ESP_CONFIG_PAGE
         tryConnectWifi(force, 10000);
     }
 
-    inline void setWiFiCredentials(String& ssid, String& pass)
+    inline void setWiFiCredentials(const String& ssid, const String& pass)
     {
         wifiSsid = ssid;
         wifiPass = pass;
@@ -214,41 +222,35 @@ namespace ESP_CONFIG_PAGE
 
         addServerHandler((char*) F("/config/wifi"), HTTP_GET, wifiGet);
         addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
+        connectionTimeoutCounter = millis() - connectionTimeoutMs;
+        WiFi.setAutoReconnect(true);
     }
 
     inline void wirelessLoop()
     {
         int status = WiFi.status();
+        int mode = WiFi.getMode();
 
-        if (!apStarted && lastConnectionError != -1)
+        if (mode == WIFI_STA)
         {
-            LOGF("Connection error %d, starting AP.\n", lastConnectionError);
+            if (status == WL_CONNECTED && millis() - connectionTimeoutCounter > 1000)
+            {
+                connectionTimeoutCounter = millis();
+            }
 
-#ifdef ESP32
-            WiFi.mode(WIFI_MODE_APSTA);
-#elif ESP8266
-            WiFi.mode(WIFI_AP_STA);
-#endif
-
-            WiFi.softAP(apSsid, apPass);
-            LOGF("Server IP is %s.\n", apIp.toString().c_str());
-            apStarted = true;
-            connected = false;
+            if (status != WL_CONNECTED && millis() - connectionTimeoutCounter > connectionTimeoutMs)
+            {
+                LOGN("Connection timeout reached, starting ap.");
+                WiFi.mode(WIFI_AP_STA);
+                WiFi.softAP(apSsid, apPass);
+                LOGF("Ap started, server IP is %s.\n", apIp.toString().c_str());
+            }
         }
-
-        if (!connected && status == WL_CONNECTED)
+        else if (mode == WIFI_AP_STA && status == WL_CONNECTED)
         {
-            LOGF("Connected successfully to wireless network, IP: %s.\n", WiFi.localIP().toString().c_str());
-            lastConnectionError = -1;
-            apStarted = false;
-            connected = true;
-
-            LOGN("Disabling AP.");
-#ifdef ESP32
-            WiFi.mode(WIFI_MODE_STA);
-#elif ESP8266
+            LOGF("Connected to network successfully, ip address: %s\n", WiFi.localIP().toString().c_str());
+            LOGN("Disabling AP");
             WiFi.mode(WIFI_STA);
-#endif
         }
     }
 }
