@@ -69,6 +69,7 @@ namespace ESP_CONFIG_PAGE
         if (result == WL_CONNECTED)
         {
             LOGF("Connected to AP successfully, IP address: %s\n", WiFi.localIP().toString().c_str());
+            lastConnectionError = -1;
         }
         else
         {
@@ -221,7 +222,8 @@ namespace ESP_CONFIG_PAGE
 
         addServerHandler((char*) F("/config/wifi"), HTTP_GET, wifiGet);
         addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
-        connectionTimeoutCounter = millis();
+        connectionTimeoutCounter = millis() - connectionTimeoutMs;
+        WiFi.setAutoReconnect(true);
     }
 
     inline void wirelessLoop()
