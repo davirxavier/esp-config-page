@@ -224,6 +224,7 @@ namespace ESP_CONFIG_PAGE
         addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
         connectionTimeoutCounter = millis() - connectionTimeoutMs;
         WiFi.setAutoReconnect(true);
+        WiFi.mode(WIFI_STA);
     }
 
     inline void wirelessLoop()
