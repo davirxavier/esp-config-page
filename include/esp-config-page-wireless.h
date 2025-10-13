@@ -12,6 +12,7 @@ namespace ESP_CONFIG_PAGE
     IPAddress apIp = IPAddress(192, 168, 1, 1);
     String dnsName = "esp-config.local";
     int lastConnectionError = -1;
+    unsigned long connectionRetryCounter;
     unsigned long connectionTimeoutCounter;
     unsigned long connectionTimeoutMs = 45000;
 
@@ -224,6 +225,7 @@ namespace ESP_CONFIG_PAGE
         addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
         connectionTimeoutCounter = millis() - connectionTimeoutMs;
         WiFi.setAutoReconnect(true);
+        WiFi.mode(WIFI_STA);
     }
 
     inline void wirelessLoop()
@@ -251,6 +253,13 @@ namespace ESP_CONFIG_PAGE
             LOGF("Connected to network successfully, ip address: %s\n", WiFi.localIP().toString().c_str());
             LOGN("Disabling AP");
             WiFi.mode(WIFI_STA);
+        }
+
+        if (status != WL_CONNECTED && millis() - connectionRetryCounter > 3000)
+        {
+            LOGN("Trying to reconnect...");
+            WiFi.reconnect();
+            connectionRetryCounter = millis();
         }
     }
 }
