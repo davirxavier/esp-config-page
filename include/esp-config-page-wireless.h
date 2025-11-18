@@ -3,10 +3,11 @@
 
 #include "esp-config-defines.h"
 
+#define ESP_CONP_SSID_LEN 33
+#define ESP_CONP_PASS_LEN 64
+
 namespace ESP_CONFIG_PAGE
 {
-    String wifiSsid = "";
-    String wifiPass = "";
     String apSsid = "ESP";
     String apPass = "12345678";
     IPAddress apIp = IPAddress(192, 168, 1, 1);
@@ -14,10 +15,41 @@ namespace ESP_CONFIG_PAGE
     int lastConnectionError = -1;
     unsigned long connectionRetryCounter;
     unsigned long connectionTimeoutCounter;
-    unsigned long connectionTimeoutMs = 45000;
+    unsigned long connectionTimeoutMs = 15000;
+    unsigned long currentReconnectRetry = 1;
+    unsigned long reconnectTimeMax = 120000;
+    KeyValueStorage *wifiStorage = nullptr;
+
+    inline void addWifiNetwork(const char *ssid, const char *pass)
+    {
+        if (wifiStorage == nullptr)
+        {
+            LOGN("Trying to add wifi network, but wifi storage is not set.");
+            return;
+        }
+
+        if (ssid == nullptr || strlen(ssid) == 0 || pass == nullptr || strlen(pass) == 0)
+        {
+            return;
+        }
+
+        char hexBuf[ESP_CONP_SSID_LEN*2+1]{};
+        encodeToHex(ssid, hexBuf);
+        wifiStorage->save(hexBuf, pass);
+    }
+
+    inline void setWifiStorage(KeyValueStorage *storage)
+    {
+        if (wifiStorage != nullptr)
+        {
+            free(wifiStorage);
+        }
+
+        wifiStorage = storage;
+    }
 
     /**
-     * Sets the wifi connection timeout in milliseconds. Default is 45 seconds.
+     * Sets the wifi connection timeout in milliseconds. Default is 15 seconds.
      */
     inline void setConnectionTimeout(unsigned long connectionTimeoutMs)
     {
@@ -40,7 +72,7 @@ namespace ESP_CONFIG_PAGE
      * configurations. Should be false on normal usage.
      * @param timeoutMs - timeout in milliseconds for waiting for a connection.
      */
-    inline void tryConnectWifi(bool force, unsigned long timeoutMs)
+    inline void tryConnectWifi(bool force = false, unsigned long timeoutMs = connectionTimeoutMs)
     {
         LOGF("Trying to connect to wifi, force reconnect: %s\n", force ? "yes" : "no");
         if (!force && WiFi.status() == WL_CONNECTED)
@@ -49,52 +81,49 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        WiFi.mode(WIFI_STA);
-        WiFi.setAutoReconnect(true);
-        WiFi.persistent(true);
+        WiFi.setAutoReconnect(false);
+        WiFi.persistent(false);
 
-        if (force)
+        size_t index = 0;
+        wifiStorage->doForEachKey([&index, timeoutMs](const char *ssidHex, const char *pass)
         {
-            WiFi.disconnect(false, false);
-            WiFi.begin(wifiSsid, wifiPass);
-        }
-        else
-        {
-            WiFi.begin();
-        }
+            index++;
 
-        LOGN("Connecting now...");
-        int result = WiFi.waitForConnectResult(timeoutMs);
-        LOGF("Connection result: %d\n", result);
+            if (strlen(ssidHex) == 0 || strlen(pass) == 0)
+            {
+                LOGF("Network or password at position %zu is empty, ignoring\n", index-1);
+                return true;
+            }
 
-        if (result == WL_CONNECTED)
-        {
-            LOGF("Connected to AP successfully, IP address: %s\n", WiFi.localIP().toString().c_str());
-            lastConnectionError = -1;
-        }
-        else
-        {
-            LOGN("Connection error.");
-            lastConnectionError = result;
-            WiFi.disconnect();
-        }
-    }
+            char ssid[(strlen(ssidHex)/2)+1]{};
+            decodeFromHex(ssidHex, ssid);
 
-    /**
-     * Tries to reconnect automatically to the saved wireless connection, if there are any.
-     *
-     * @param force - pass true if the connection is to be forced, that is, if you want to ignore any saved wireless
-     * configurations. Should be false on normal usage.
-     */
-    inline void tryConnectWifi(bool force)
-    {
-        tryConnectWifi(force, 10000);
-    }
+            LOGF("Trying connection for network %s\n", ssid);
+            WiFi.disconnect(true, true);
+            delay(10);
+            WiFi.begin(ssid, pass);
 
-    inline void setWiFiCredentials(const String& ssid, const String& pass)
-    {
-        wifiSsid = ssid;
-        wifiPass = pass;
+            LOGN("Connecting now...");
+            int result = WiFi.waitForConnectResult(timeoutMs);
+            LOGF("Connection result: %d\n", result);
+
+            if (result == WL_CONNECTED)
+            {
+                LOGF("Connected to AP successfully, IP address: %s\n", WiFi.localIP().toString().c_str());
+                lastConnectionError = -1;
+                currentReconnectRetry = 1;
+                return false;
+            }
+            else
+            {
+                LOGN("Connection error.");
+                lastConnectionError = result;
+                WiFi.disconnect(false, true);
+                return true;
+            }
+
+            delay(15);
+        }, ESP_CONP_PASS_LEN);
     }
 
     inline void setAPConfig(const char ssid[], const char pass[])
@@ -106,6 +135,13 @@ namespace ESP_CONFIG_PAGE
 
     inline void wifiGet()
     {
+        if (WiFi.status() == WL_NO_SSID_AVAIL)
+        {
+            WiFi.disconnect(false, true);
+        }
+
+        LOGF("Wifi status: %d\n", WiFi.status());
+
         int count = WiFi.scanNetworks();
         if (count < 0)
         {
@@ -177,8 +213,8 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        char buf[33];
-        char ssid[33];
+        char buf[ESP_CONP_PASS_LEN]{};
+        char ssid[ESP_CONP_SSID_LEN]{};
         unsigned int currentChar = 0;
         bool isSsid = true;
 
@@ -198,8 +234,7 @@ namespace ESP_CONFIG_PAGE
                 else
                 {
                     server->send(200);
-                    wifiSsid = String(ssid);
-                    wifiPass = String(buf);
+                    addWifiNetwork(ssid, buf);
                     tryConnectWifi(true);
                     break;
                 }
@@ -224,8 +259,10 @@ namespace ESP_CONFIG_PAGE
         addServerHandler((char*) F("/config/wifi"), HTTP_GET, wifiGet);
         addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
         connectionTimeoutCounter = millis() - connectionTimeoutMs;
+        setWifiStorage(new ESP_CONFIG_PAGE::LittleFSKeyValueStorage("/esp-conp-saved-networks"));
         WiFi.setAutoReconnect(true);
         WiFi.mode(WIFI_STA);
+        tryConnectWifi();
     }
 
     inline void wirelessLoop()
@@ -252,14 +289,16 @@ namespace ESP_CONFIG_PAGE
         {
             LOGF("Connected to network successfully, ip address: %s\n", WiFi.localIP().toString().c_str());
             LOGN("Disabling AP");
+            currentReconnectRetry = 1;
             WiFi.mode(WIFI_STA);
         }
 
-        if (status != WL_CONNECTED && millis() - connectionRetryCounter > 3000)
+        if (status != WL_CONNECTED && millis() - connectionRetryCounter > min(2000 * currentReconnectRetry, reconnectTimeMax))
         {
             LOGN("Trying to reconnect...");
-            WiFi.reconnect();
+            tryConnectWifi(true);
             connectionRetryCounter = millis();
+            currentReconnectRetry++;
         }
     }
 }

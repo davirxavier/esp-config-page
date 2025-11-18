@@ -163,6 +163,48 @@ namespace ESP_CONFIG_PAGE
         free(arr);
     }
 
+    inline void encodeToHex(const char *input, char *output) {
+        constexpr char hexDigits[] = "0123456789ABCDEF";
+
+        while (*input) {
+            *output++ = hexDigits[(*input >> 4) & 0xF];
+            *output++ = hexDigits[*input & 0xF];
+            input++;
+        }
+
+        *output = '\0';
+    }
+
+    inline unsigned char hexCharToByte(char hexChar) {
+        if ('0' <= hexChar && hexChar <= '9') {
+            return hexChar - '0';
+        } else if ('A' <= hexChar && hexChar <= 'F') {
+            return hexChar - 'A' + 10;
+        } else if ('a' <= hexChar && hexChar <= 'f') {
+            return hexChar - 'a' + 10;
+        }
+        return 0; // Invalid character, but should never happen if input is valid
+    }
+
+    inline bool decodeFromHex(const char *hexStr, char *output) {
+        int len = strlen(hexStr);
+
+        if (len % 2 != 0) {
+            printf("Invalid hex string length.\n");
+            return false;
+        }
+
+        for (int i = 0; i < len; i += 2) {
+            unsigned char highNibble = hexCharToByte(hexStr[i]);
+            unsigned char lowNibble = hexCharToByte(hexStr[i + 1]);
+
+            *output++ = (highNibble << 4) | lowNibble;
+        }
+
+        *output = '\0';
+        return true;
+    }
+
     /**
      * Storage class for any key value pair.
      */
@@ -182,6 +224,15 @@ namespace ESP_CONFIG_PAGE
          * @return recovered value or nullptr if there are none. ALWAYS FREE() THE CHAR* AFTER YOU ARE DONE USING IT.
          */
         virtual char* recover(const char *key);
+
+        /**
+         * Recover a value from storage. Writes to out buffer.
+         */
+        virtual size_t recover(const char *key, char *out, size_t outSize);
+
+        virtual void doForEachKey(std::function<bool(const char *key, const char *value)> fn, const size_t maxValueSize);
+
+        virtual bool exists(const char *key);
     };
 
     /**
@@ -272,6 +323,82 @@ namespace ESP_CONFIG_PAGE
             char *ret = (char*) malloc(strlen(fileStr)+1);
             strcpy(ret, fileStr);
             return ret;
+        }
+
+        size_t recover(const char* key, char* out, size_t outSize) override
+        {
+            memset(out, 0, outSize);
+
+            char filePath[filePathLength(key)];
+            getFilePath(key, filePath);
+            LOGF("Recovering value for key %s in path %s.\n", key, filePath);
+
+            if (!LittleFS.exists(filePath))
+            {
+                return 0;
+            }
+
+            File file = LittleFS.open(filePath, "r");
+            size_t read = file.readBytes(out, outSize-1);
+            file.close();
+
+            return read;
+        }
+
+        void doForEachKey(std::function<bool(const char* key, const char* value)> fn, const size_t maxValueSize) override
+        {
+#ifdef ESP32
+            File file = LittleFS.open(folderPath);
+            File nextFile;
+            while (file.isDirectory() && (nextFile = file.openNextFile()))
+            {
+                if (!nextFile || nextFile.isDirectory())
+                {
+                    continue;
+                }
+
+                char buf[maxValueSize+1]{};
+                nextFile.readBytes(buf, maxValueSize);
+                bool result = fn(nextFile.name(), buf);
+                nextFile.close();
+
+                if (!result)
+                {
+                    break;
+                }
+            }
+
+            if (file)
+            {
+                file.close();
+            }
+#elif ESP8266
+            Dir dir = LittleFS.openDir(folderPath);
+
+            while (dir.next()) {
+                if (!dir.isDirectory())
+                {
+                    File file = dir.openFile("r");
+
+                    char buf[maxValueSize+1]{};
+                    file.readBytes(buf, maxValueSize);
+                    bool result = fn(file.name(), buf);
+                    file.close();
+
+                    if (!result)
+                    {
+                        break;
+                    }
+                }
+            }
+#endif
+        }
+
+        bool exists(const char* key) override
+        {
+            char filePath[filePathLength(key)];
+            getFilePath(key, filePath);
+            return LittleFS.exists(filePath);
         }
 
     protected:
