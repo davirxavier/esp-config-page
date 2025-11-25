@@ -66,7 +66,7 @@ namespace ESP_CONFIG_PAGE
     ESP_CONFIG_PAGE_LOGGING::ConnectedClient *otaClient = nullptr;
     unsigned long lastWsServerUpdate = 0;
     unsigned long otaTimer = 0;
-    unsigned long otaTimeout = 20000;
+    unsigned long otaTimeout = 60000;
     bool otaStarted = false;
     char otaMd5[33]{};
     bool otaMd5Started = false;
