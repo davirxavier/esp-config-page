@@ -5,12 +5,45 @@
 #ifndef ESP_CONFIG_PAGE_OTA_H
 #define ESP_CONFIG_PAGE_OTA_H
 
+#ifdef ESP32
 #include <mbedtls/md5.h>
+#elif ESP8266
+#include <md5.h>
+#endif
 
 #ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #warning  "Using ESP-IDF OTA API instead of Arduino's"
+#endif
+
+#ifdef ESP32
+
+#ifdef mbedtls_md5_starts_ret
+#define ESP_CONP_MD5_START(ctx) mbedtls_md5_starts_ret(ctx)
+#else
+#define ESP_CONP_MD5_START(ctx) mbedtls_md5_starts(ctx)
+#endif
+
+#ifdef mbedtls_md5_update_ret
+#define ESP_CONP_MD5_UPDATE(ctx, data, len) esp_md5_update_ret(ctx, data, len)
+#else
+#define ESP_CONP_MD5_UPDATE(ctx, data, len) esp_md5_update(ctx, data, len)
+#endif
+
+#ifdef mbedtls_md5_finish_ret
+#define ESP_CONP_MD5_END(ctx, res) mbedtls_md5_finish_ret(ctx, res)
+#else
+#define ESP_CONP_MD5_END(ctx, res) mbedtls_md5_finish(ctx, res)
+#endif
+
+#define ESP_CONP_MD5_CTX_T mbedtls_md5_context
+
+#elif ESP8266
+#define ESP_CONP_MD5_START(ctx) MD5Init(ctx)
+#define ESP_CONP_MD5_UPDATE(ctx, data, len) MD5Update(ctx, data, len)
+#define ESP_CONP_MD5_END(ctx, res) MD5Final(res, ctx)
+#define ESP_CONP_MD5_CTX_T md5_context_t
 #endif
 
 namespace ESP_CONFIG_PAGE
@@ -36,20 +69,20 @@ namespace ESP_CONFIG_PAGE
     unsigned long otaTimeout = 20000;
     bool otaStarted = false;
     char otaMd5[33]{};
-    mbedtls_md5_context otaMd5Ctx;
     bool otaMd5Started = false;
     bool isOtaFilesystem = false;
 
+    ESP_CONP_MD5_CTX_T otaMd5Ctx;
+
     inline void otaChecksumStart()
     {
-        mbedtls_md5_init(&otaMd5Ctx);
-        mbedtls_md5_starts(&otaMd5Ctx);
+        ESP_CONP_MD5_START(&otaMd5Ctx);
         otaMd5Started = true;
     }
 
     inline void otaChecksumWrite(const uint8_t* data, size_t len)
     {
-        mbedtls_md5_update(&otaMd5Ctx, data, len);
+        ESP_CONP_MD5_UPDATE(&otaMd5Ctx, data, len);
     }
 
     inline void otaChecksumFree()
@@ -59,14 +92,19 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
+#ifdef ESP32
         mbedtls_md5_free(&otaMd5Ctx);
+#elif ESP8266
+        otaMd5Ctx = ESP_CONP_MD5_CTX_T();
+#endif
+
         otaMd5Started = false;
     }
 
     inline bool otaChecksumVerify(const char* expectedMd5)
     {
         unsigned char md5Result[16];
-        mbedtls_md5_finish(&otaMd5Ctx, md5Result);
+        ESP_CONP_MD5_END(&otaMd5Ctx, md5Result);
         otaChecksumFree();
 
         char md5String[33];
@@ -139,12 +177,12 @@ namespace ESP_CONFIG_PAGE
 
 #ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
         esp_ota_abort(otaHandle);
-#else
+#elifdef ESP32
         Update.abort();
 #endif
 
         delay(1000);
-        esp_restart();
+        ESP.restart();
     }
 
     inline void sendResponse(const char *status, OtaEventType eventType = SUCCESS)

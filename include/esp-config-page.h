@@ -81,7 +81,7 @@ namespace ESP_CONFIG_PAGE
         strcat(buf, freeHeap.c_str());
         strcat(buf, "+");
 
-        strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_MODE_APSTA ? "0" : "1");
+        strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP_STA ? "0" : "1");
         strcat(buf, "+");
 
         strcat(buf, __DATE__);
