@@ -23,7 +23,10 @@
     "espressif8266",
     "esp32"
   ],
-  "dependencies": {
-    "links2004/WebSockets": "2.6.1"
-  }
+  "dependencies": [
+    {
+      "name": "arduinoWebSockets",
+      "version": "https://github.com/davirxavier/arduinoWebSockets/archive/refs/tags/1.0.0.zip"
+    }
+  ]
 }

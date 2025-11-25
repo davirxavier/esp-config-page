@@ -282,7 +282,7 @@ namespace ESP_CONFIG_PAGE
                 LOGN("Connection timeout reached, starting ap.");
                 WiFi.mode(WIFI_AP_STA);
                 WiFi.softAP(apSsid, apPass);
-                LOGF("Ap started, server IP is %s.\n", apIp.toString().c_str());
+                LOGF("Ap started, server IP is %s.\n", WiFi.softAPIP().toString().c_str());
             }
         }
         else if (mode == WIFI_AP_STA && status == WL_CONNECTED)
