@@ -647,6 +647,8 @@
     }
     <!--END-FILES-->
 
+    let getHostWithoutPort = () => window.location.host.split(':')[0];
+
     let hasMd5 = false;
     function md5() {}
 
@@ -711,7 +713,7 @@
             showOtaLoader();
 
             const file = input.files[0];
-            let otaSocket = new WebSocket('ws://' + window.location.host + ':' + otaPort + '/ws');
+            let otaSocket = new WebSocket('ws://' + getHostWithoutPort() + ':' + otaPort + '/ws');
             let error;
 
             const sendNextChunk = async () => {
