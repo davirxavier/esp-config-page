@@ -12,7 +12,11 @@
 namespace ESP_CONFIG_PAGE_LOGGING
 {
 #ifdef ESP32
+#if ARDUINO_USB_MODE
     using SERIAL_T = HWCDC;
+#else
+    using SERIAL_T = HardwareSerial;
+#endif
 #elif ESP8266
     using SERIAL_T = HardwareSerial;
 #endif
