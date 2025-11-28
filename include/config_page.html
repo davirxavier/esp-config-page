@@ -743,6 +743,7 @@
 
                 if (currentAuth) {
                     setTimeout(() => {
+                        timeout = 1000;
                         if (wsReconnection) {
                             console.log("OTA is reconnection");
                             otaSocket.send(otaWsEvents.RECONNECTION + (atob(currentAuth.split('Basic ')[1])));
