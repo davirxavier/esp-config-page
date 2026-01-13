@@ -84,6 +84,11 @@ namespace ESP_CONFIG_PAGE
         WiFi.setAutoReconnect(false);
         WiFi.persistent(false);
 
+        if (wifiStorage == nullptr)
+        {
+            return;
+        }
+
         size_t index = 0;
         wifiStorage->doForEachKey([&index, timeoutMs](const char *ssidHex, const char *pass)
         {
@@ -260,6 +265,7 @@ namespace ESP_CONFIG_PAGE
         addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
         connectionTimeoutCounter = millis() - connectionTimeoutMs;
         setWifiStorage(new ESP_CONFIG_PAGE::LittleFSKeyValueStorage("/esp-conp-saved-networks"));
+        WiFi.persistent(false);
         WiFi.setAutoReconnect(true);
         WiFi.mode(WIFI_STA);
         tryConnectWifi();

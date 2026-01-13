@@ -62,9 +62,13 @@ namespace ESP_CONFIG_PAGE
 #endif
 #endif
 
+
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
     WebSocketsServer otaWsServer(ESP32_CONP_OTA_WS_PORT);
     ESP_CONFIG_PAGE_LOGGING::ConnectedClient *otaClient = nullptr;
     unsigned long lastWsServerUpdate = 0;
+#endif
+
     unsigned long otaTimer = 0;
     unsigned long otaTimeout = 60000;
     bool otaStarted = false;

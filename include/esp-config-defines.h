@@ -217,22 +217,22 @@ namespace ESP_CONFIG_PAGE
         /**
          * Save a key-value pair in storage.
          */
-        virtual void save(const char *key, const char *value);
+        virtual void save(const char *key, const char *value) = 0;
 
         /**
          * Recover a value by key in storage.
          * @return recovered value or nullptr if there are none. ALWAYS FREE() THE CHAR* AFTER YOU ARE DONE USING IT.
          */
-        virtual char* recover(const char *key);
+        virtual char* recover(const char *key) = 0;
 
         /**
          * Recover a value from storage. Writes to out buffer.
          */
-        virtual size_t recover(const char *key, char *out, size_t outSize);
+        virtual size_t recover(const char *key, char *out, size_t outSize) = 0;
 
-        virtual void doForEachKey(std::function<bool(const char *key, const char *value)> fn, const size_t maxValueSize);
+        virtual void doForEachKey(std::function<bool(const char *key, const char *value)> fn, const size_t maxValueSize) = 0;
 
-        virtual bool exists(const char *key);
+        virtual bool exists(const char *key) = 0;
     };
 
     /**
@@ -350,7 +350,7 @@ namespace ESP_CONFIG_PAGE
 #ifdef ESP32
             File file = LittleFS.open(folderPath);
             File nextFile;
-            while (file.isDirectory() && (nextFile = file.openNextFile()))
+            while (file.isDirectory() && ((nextFile = file.openNextFile())))
             {
                 if (!nextFile || nextFile.isDirectory())
                 {
