@@ -3,6 +3,8 @@
 
 #define ENABLE_LOGGING_MODULE
 
+#include <esp-config-defines.h>
+
 #include "Arduino.h"
 #include "WebSocketsServer.h"
 #include "LittleFS.h"
@@ -21,10 +23,10 @@ namespace ESP_CONFIG_PAGE_LOGGING
     using SERIAL_T = HardwareSerial;
 #endif
 
-    WebSocketsServer server(4000);
+    WebSocketsServer server(ESP_CONP_LOGGING_PORT);
+    char messageBuffer[1024]{};
     unsigned long lastClean;
     uint8_t pingMessage[] = {0xDE};
-    bool isAuthEnabled = false;
 
     Stream* logSerial = &Serial;
     String username;
@@ -36,41 +38,93 @@ namespace ESP_CONFIG_PAGE_LOGGING
     unsigned long maximumSizeBytes;
     bool isLoggingEnabled = false;
 
-    struct ConnectedClient
+    enum EventType
     {
-        ConnectedClient(uint8_t id, unsigned long connectedTime, bool authed) : id(id), connectedTime(connectedTime),
-            authed(authed)
-        {
-        };
-        uint8_t id;
-        unsigned long connectedTime;
-        bool authed;
+        AUTH = 'A',
+        LOG = 'l',
+        ALL_LOGS = 'L',
+        ERROR = 'E',
+        PING = 'P',
+        PONG = 'p'
     };
 
-    ConnectedClient* connectedClients[MAX_CLIENTS];
-
-    inline void sendDataToClients(const uint8_t* buffer, const size_t size, bool isText)
+    struct ConnectedClient
     {
-        if (isAuthEnabled)
+        int id = -1;
+        unsigned long connectedTime = 0;
+        bool authed = false;
+    };
+
+    ConnectedClient connectedClients[MAX_CLIENTS];
+
+    inline bool clientIsConnected(int i)
+    {
+        return connectedClients[i].id >= 0;
+    }
+
+    inline bool removeClient(uint8_t id)
+    {
+        for (size_t i = 0; i < MAX_CLIENTS; i++)
         {
-            for (uint8_t i = 0; i < MAX_CLIENTS; i++)
+            if (connectedClients[i].id == id)
             {
-                if (connectedClients[i] != nullptr && connectedClients[i]->authed)
+                connectedClients[i].id = -1;
+
+                if (server.clientIsConnected(id))
                 {
-                    if (isText)
-                    {
-                        server.sendTXT(connectedClients[i]->id, buffer, size);
-                    }
-                    else
-                    {
-                        server.sendBIN(connectedClients[i]->id, buffer, size);
-                    }
+                    server.disconnect(id);
                 }
+                return true;
             }
+        }
+
+        return false;
+    }
+
+    inline int registerClient(uint8_t id)
+    {
+        for (size_t i = 0; i < MAX_CLIENTS; i++)
+        {
+            if (connectedClients[i].id < 0)
+            {
+                connectedClients[i].id = id;
+                connectedClients[i].authed = false;
+                connectedClients[i].connectedTime = millis();
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    inline void sendMessage(uint8_t clientId, const char *message, const size_t len, bool isText, EventType eventType)
+    {
+        messageBuffer[0] = eventType;
+        memcpy(messageBuffer+1, message, len);
+
+        if (isText)
+        {
+            server.sendTXT(clientId, messageBuffer, len+1);
         }
         else
         {
-            server.broadcastTXT(buffer, size);
+            server.sendBIN(clientId, (uint8_t*) messageBuffer, len+1);
+        }
+    }
+
+    inline void sendMessage(uint8_t clientId, const char *message, EventType eventType)
+    {
+        sendMessage(clientId, message, strlen(message), true, eventType);
+    }
+
+    inline void broadcastMessage(const char *message, const size_t len, bool isText, EventType eventType)
+    {
+        for (uint8_t i = 0; i < MAX_CLIENTS; i++)
+        {
+            if (clientIsConnected(i) && connectedClients[i].authed)
+            {
+                sendMessage(connectedClients[i].id, message, len, isText, eventType);
+            }
         }
     }
 
@@ -92,7 +146,7 @@ namespace ESP_CONFIG_PAGE_LOGGING
                 return SERIAL_T::write(buffer, size);
             }
 
-            sendDataToClients(buffer, size, true);
+            broadcastMessage((char*) buffer, size, true, LOG);
 
             if (retentionEnabled && logFile && logFile.size() < maximumSizeBytes)
             {
@@ -117,112 +171,105 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
         for (uint8_t i = 0; i < MAX_CLIENTS; i++)
         {
-            connectedClients[i] = nullptr;
+            connectedClients[i].id = -1;
         }
 
-        if (!u.isEmpty() && !p.isEmpty())
+        username = u;
+        password = p;
+
+        server.onEvent([](uint8_t client, WStype_t type, uint8_t* payload, size_t length)
         {
-            username = u;
-            password = p;
-
-            isAuthEnabled = true;
-
-            server.onEvent([](uint8_t client, WStype_t type, uint8_t* payload, size_t length)
+            if (type == WStype_CONNECTED)
             {
-                if (type == WStype_CONNECTED)
+                int pos = registerClient(client);
+                if (pos < 0)
                 {
-                    for (uint8_t i = 0; i < MAX_CLIENTS; i++)
+                    sendMessage(client, "socket full", ERROR);
+                    server.disconnect(client);
+                    return;
+                }
+
+                LOGF("Client connected: %d\n", client);
+            }
+            else if (type == WStype_DISCONNECTED)
+            {
+                removeClient(client);
+            }
+            else if (type == WStype_TEXT || type == WStype_BIN)
+            {
+                char eventType = payload[0];
+                const char *payloadWithoutEvent = (const char*) (length == 0 ? payload : payload+1);
+                const size_t lengthWithoutEvent = length == 0 ? 0 : length-1;
+
+                switch (eventType)
+                {
+                case AUTH:
                     {
-                        if (connectedClients[i] == nullptr)
+                        LOGF("Client auth request: %d\n", client);
+
+                        char *separator = strchr(payloadWithoutEvent, ':');
+                        if (separator == nullptr)
                         {
-                            connectedClients[i] = new ConnectedClient(client, millis(), false);
-
-                            if (retentionEnabled)
-                            {
-                                retentionEnabled = false;
-                                logFile.close();
-
-                                File file = LittleFS.open(logFilePath, "r");
-                                uint8_t buf[file.size()];
-                                file.read(buf, file.size());
-                                file.close();
-
-                                server.sendTXT(client, buf, sizeof(buf));
-                                logFile = LittleFS.open(logFilePath, "a");
-                                retentionEnabled = true;
-                            }
+                            sendMessage(client, "Invalid auth", ERROR);
                             return;
                         }
-                    }
 
-                    server.sendTXT(client, "Capacity exceeded");
-                    server.disconnect(client);
-                }
-                else if (type == WStype_TEXT)
-                {
-                    unsigned int usernameLength = username.length();
-                    unsigned int passLength = password.length();
-
-                    if (length - 6 - passLength < usernameLength)
-                    {
-                        return;
-                    }
-
-                    if (length - 6 - usernameLength < passLength)
-                    {
-                        return;
-                    }
-
-                    char* text = reinterpret_cast<char*>(payload);
-                    char header[5];
-                    strncpy(header, text, 4);
-                    header[4] = 0;
-
-                    if (strcmp(header, "auth") != 0)
-                    {
-                        return;
-                    }
-
-                    char user[usernameLength + 1];
-                    strncpy(user, text + 5, usernameLength);
-                    user[usernameLength] = 0;
-
-                    if (strcmp(user, username.c_str()) != 0)
-                    {
-                        return;
-                    }
-
-                    char pass[passLength + 1];
-                    strncpy(pass, text + 6 + usernameLength, passLength);
-                    pass[passLength] = 0;
-
-                    if (strcmp(pass, password.c_str()) != 0)
-                    {
-                        return;
-                    }
-
-                    for (uint8_t i = 0; i < MAX_CLIENTS; i++)
-                    {
-                        if (connectedClients[i] != nullptr && connectedClients[i]->id == client)
+                        separator[0] = 0;
+                        char *sentPass = separator+1;
+                        if (strcmp(payloadWithoutEvent, username.c_str()) != 0 || strcmp(sentPass, password.c_str()))
                         {
-                            connectedClients[i]->authed = true;
-                            break;
+                            sendMessage(client, "Invalid auth", ERROR);
+                            return;
                         }
-                    }
-                }
-                else if (type == WStype_DISCONNECTED)
-                {
-                    for (uint8_t i = 0; i < MAX_CLIENTS; i++)
-                    {
-                        if (connectedClients[i] != nullptr && client == connectedClients[i]->id)
+
+                        for (size_t i = 0; i < MAX_CLIENTS; i++)
                         {
-                            delete connectedClients[i];
-                            connectedClients[i] = nullptr;
+                            if (connectedClients[i].id == client)
+                            {
+                                connectedClients[i].authed = true;
+                                sendMessage(client, "", AUTH);
+                                return;
+                            }
                         }
+
+                        sendMessage(client, "unknown client", ERROR);
+                        break;
+                    }
+                case ALL_LOGS:
+                    {
+                        if (retentionEnabled)
+                        {
+                            retentionEnabled = false;
+                            logFile.close();
+
+                            File file = LittleFS.open(logFilePath, "r");
+                            char buf[file.size()+1]{};
+                            file.readBytes(buf, sizeof(buf)-1);
+                            file.close();
+
+                            sendMessage(client, buf, ALL_LOGS);
+                            logFile = LittleFS.open(logFilePath, "a");
+                            retentionEnabled = true;
+                        }
+                        else
+                        {
+                            sendMessage(client, "", ALL_LOGS);
+                        }
+                        break;
+                    }
+                case PING:
+                    {
+                        sendMessage(client, "", PONG);
+                        break;
+                    }
+                default:
+                    {
+                        sendMessage(client, "Invalid event type", ERROR);
+                        break;
                     }
                 }
-            });
-        }
+            }
+        });
 
         server.begin();
         isLoggingEnabled = true;
@@ -245,29 +292,21 @@ namespace ESP_CONFIG_PAGE_LOGGING
     inline void loop()
     {
         server.loop();
+
         if (millis() - lastClean > 2000)
         {
-            sendDataToClients(pingMessage, 1, false);
+            broadcastMessage("P", 1, true, PING);
 
             if (retentionEnabled && logFile)
             {
                 logFile.flush();
             }
 
-            if (isAuthEnabled)
+            for (uint8_t i = 0; i < MAX_CLIENTS; i++)
             {
-                for (uint8_t i = 0; i < MAX_CLIENTS; i++)
+                if (clientIsConnected(i) && !connectedClients[i].authed && millis() - connectedClients[i].connectedTime > 5000)
                 {
-                    if (connectedClients[i] != nullptr && !connectedClients[i]->authed && millis() - connectedClients[i]
-                        ->connectedTime > 5000)
-                    {
-                        auto client = connectedClients[i]->id;
-                        if (server.clientIsConnected(client))
-                        {
-                            server.sendTXT(client, "Auth timeout");
-                            server.disconnect(client);
-                        }
-                    }
+                    removeClient(connectedClients[i].id);
                 }
             }
 

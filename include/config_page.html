@@ -233,6 +233,11 @@
             border-collapse: collapse;
             padding: 1rem;
         }
+        thead {
+            position: sticky;
+            top: 0;
+            background: rgba(66, 66, 66, 1);
+        }
         th {
             border-bottom: 1px solid rgba(102, 102, 102, 0.5);
             color: #BDBDBD;
@@ -240,6 +245,7 @@
             font-weight: 600;
             padding: 1rem;
             text-align: center;
+            position: sticky;
         }
         td {
             color: #BDBDBD;
@@ -360,11 +366,18 @@
             </table>
         </div>
 
-        <label class="title-text flex-center">
-            <input type="checkbox" onchange="changeLoggingScroll()" checked>
-            Scroll to bottom
-        </label>
-        <button class="small-btn" id="logging-btn" onclick="manualStop = false; toggleLogging()">Start</button>
+        <div class="flex-center">
+            <label class="title-text flex-center" style="margin-right: 1rem">
+                <input id="logging-checkbox" type="checkbox" onchange="changeLoggingScroll()" checked>
+                Scroll to bottom
+            </label>
+
+            <label class="title-text flex-center">
+                Number of shown entries
+                <input type="number" autocomplete="off" class="env-input" style="margin-left: 0.5rem" value="1000" id="logging-entries-input">
+            </label>
+        </div>
+        <button class="small-btn" id="logging-btn" onclick="toggleLogging()">Start</button>
     </div>
     <!--END-LOGGING-->
 
@@ -664,6 +677,7 @@
     let otaIsWs = false;
     let lastConfirmedChunkOffset = 0;
     let otaCurrentChunkOffset = 0;
+    let otaTimeout = 1000;
 
     const otaWsEvents = {
         AUTH: 'A',
@@ -799,9 +813,9 @@
                     return;
                 }
 
-                console.log('OTA socket is closed. Reconnect will be attempted in ' + (timeout / 1000) + ' seconds.');
+                console.log('OTA socket is closed. Reconnect will be attempted in ' + (otaTimeout / 1000) + ' seconds.');
                 otaCurrentChunkOffset = lastConfirmedChunkOffset;
-                setTimeout(() => onOtaUpload(hasFile, true), Math.min(15000, timeout = timeout * 1.3));
+                setTimeout(() => onOtaUpload(hasFile, true), Math.min(15000, otaTimeout = otaTimeout * 1.3));
             };
 
             return;
@@ -877,6 +891,10 @@
     }
     <!--END-OTA-->
 
+    <!--MARKER-LOGGING-->
+    let loggingPort = 4000;
+    <!--END-LOGGING-->
+
     function updateInfo() {
         doRequest('info', undefined, 'GET', (success, response) => {
             if (success) {
@@ -900,8 +918,11 @@
                 otaIsWs = split[7] == "1";
                 otaMaxLength = parseInt(split[8]) || 1024;
                 otaPort = parseInt(split[9]) || 80;
-                console.log(`OTA port/max-length/is-ws: ${otaPort}/${otaMaxLength}/${otaIsWs}`);
                 <!--END-OTA-->
+
+                <!--MARKER-LOGGING-->
+                loggingPort = parseInt(split[10]) || 4000;
+                <!--END-LOGGING-->
             } else {
                 alert('Error while trying to fetch info from controller.')
             }
@@ -1165,6 +1186,19 @@
     <!--END-WIRELESS-->
 
     <!--MARKER-LOGGING-->
+    const loggingWsEvents = {
+        AUTH: 'A',
+        LOG: 'l',
+        ALL_LOGS: 'L',
+        ERROR: 'E',
+        PING: 'P',
+        PONG: 'p'
+    };
+
+    function changeLoggingScroll() {
+        loggingScroll = document.getElementById('logging-checkbox').checked;
+    }
+
     function addZeroes(num, size) {
         if (!size) {
             size = 2;
@@ -1194,106 +1228,141 @@
         tr.appendChild(tdTime);
         tr.appendChild(tdLog);
 
-        document.getElementById('logging-table-body').appendChild(tr);
+        const tableBody = document.getElementById('logging-table-body');
+        tableBody.appendChild(tr);
         if (loggingScroll) {
             setTimeout(() => {
                 const div = document.getElementById('logging-div');
                 div.scrollTop = div.scrollHeight;
             }, 10);
         }
+
+        if ((tableBody.childElementCount) > getLoggingLastEntries()) {
+            if (tableBody.firstChild) {
+                tableBody.firstChild.remove();
+            }
+
+            if (messages.length > 0) {
+                messages.splice(0, 1);
+            }
+        }
     }
 
-    let manualStop = false;
-    let lastPing = Date.now();
-    let timeout = 1000;
     let loggingScroll = true;
-    const loggingBtn = document.getElementById('logging-btn');
+    let gotAllLogs = false;
     let loggingSocket;
-    function initLogging() {
-        if (manualStop) {
-            if (loggingSocket) {
-                loggingSocket.close();
-            }
+    let loggingTimeout = 1000;
+    let loggingPingInterval;
+    let loggingButton = document.getElementById('logging-btn');
+    let loggingStopped = false;
+    let loggingPongPending = false;
+    const loggingEntriesInput = document.getElementById('logging-entries-input');
 
-            loggingSocket = undefined;
-            return;
-        }
-
-        let isFirstMessage = true;
-        loggingSocket = new WebSocket('ws://' + window.location.host + ':4000/ws');
-
-        loggingSocket.onopen = () => {
-            console.log('Logging websocket connected.');
-            lastPing = Date.now();
-
-            if (currentAuth) {
-                setTimeout(() => {
-                    loggingSocket.send('auth:' + (atob(currentAuth.split('Basic ')[1])));
-                }, 300);
-            }
-        };
-
-        loggingSocket.onmessage = function(event) {
-            if (isFirstMessage) {
-                isFirstMessage = false;
-
-                document.getElementById('logging-table-body').innerHTML = '';
-                const split = event && event.data ? event.data.split('\n') : [];
-                split.filter(s => s && s.length > 0).forEach(pushMessage);
-                return;
-            }
-
-            const isBlob = Object.prototype.toString.call(event.data) === "[object Blob]";
-            if (event && event.data && isBlob) {
-                lastPing = Date.now();
-            } else if (!isBlob) {
-                pushMessage(event.data);
-            }
-        };
-
-        loggingSocket.onclose = function(e) {
-            if (loggingSocket == undefined) {
-                return;
-            }
-
-            console.log('Socket is closed. Reconnect will be attempted in ' + (timeout / 1000) + ' seconds.');
-            setTimeout(initLogging, Math.min(15000, timeout = timeout * 1.3));
-        };
-
-        loggingBtn.innerText = 'Stop';
-    }
-
-    function stopLogging() {
-        if (loggingSocket) {
-            loggingSocket.close();
-            loggingSocket = undefined;
-        }
-
-        manualStop = true;
-        loggingBtn.innerText = 'Start';
+    function getLoggingLastEntries() {
+        return parseInt(loggingEntriesInput.value) || 1000;
     }
 
     function toggleLogging() {
         if (loggingSocket) {
+            clearInterval(loggingPingInterval);
+            loggingPingInterval = undefined;
             stopLogging();
+            loggingButton.innerText = "Start";
+            loggingStopped = true;
+            loggingEntriesInput.disabled = false;
         } else {
+            loggingStopped = false;
             initLogging();
+            loggingButton.innerText = "Stop";
+            loggingEntriesInput.disabled = true;
         }
     }
 
-    function changeLoggingScroll() {
-        loggingScroll = !loggingScroll;
-    }
-
-    setInterval(() => {
-        if (!loggingSocket) {
-            return;
-        }
-
-        if (Date.now() - lastPing > 5000) {
+    function stopLogging() {
+        if (loggingSocket) {
+            console.log("Stopping logging.");
             loggingSocket.close();
+            loggingSocket = undefined;
         }
-    }, 5000);
+    }
+
+    function initLogging() {
+        loggingSocket = new WebSocket('ws://' + window.location.host + ':' + loggingPort + '/ws');
+        let error;
+
+        loggingSocket.onopen = () => {
+            console.log("Logging socket connected.");
+
+            if (currentAuth) {
+                setTimeout(() => {
+                    console.log("Sending auth to logging socket.");
+                    loggingSocket.send(loggingWsEvents.AUTH + (atob(currentAuth.split('Basic ')[1])));
+                }, 300);
+            }
+        };
+
+        loggingSocket.onmessage = (event) => {
+            if (!event || !event.data) {
+                console.log("OTA event is undefined, ignoring.");
+                return;
+            }
+
+            let eventString = event.data + "";
+            let eventType = eventString[0];
+            let eventData = eventString.length > 1 ? eventString.substring(1) : "";
+
+            if (eventType == loggingWsEvents.AUTH) {
+                console.log("Logging auth success.");
+
+                if (!gotAllLogs) {
+                    gotAllLogs = true;
+                    loggingSocket.send(loggingWsEvents.ALL_LOGS);
+                }
+
+                loggingPingInterval = setInterval(() => {
+                    if (loggingPongPending) {
+                        console.log("Logging pong not received, closing connection.");
+                        loggingSocket.close();
+                        clearInterval(loggingPingInterval);
+                        return;
+                    }
+
+                    console.log("Sending logging PING");
+                    loggingPongPending = true;
+                    loggingSocket.send(loggingWsEvents.PING);
+                }, 5000);
+            } else if (eventType == loggingWsEvents.ALL_LOGS) {
+                console.log("Received all logs event.");
+                if (eventData.length > 0) {
+                    eventData.split("\n");
+                }
+            } else if (eventType == loggingWsEvents.LOG) {
+                console.log("Received log event");
+                pushMessage(eventData);
+            } else if (eventType == loggingWsEvents.ERROR) {
+                console.log("Logging error event: " + eventData);
+            } else if (eventType == loggingWsEvents.PONG) {
+                console.log("Received logging PONG");
+                loggingPongPending = false;
+            } else {
+                const eventName = Object.keys(loggingWsEvents).find(k => loggingWsEvents[k] == eventType);
+                console.log("Other logging event received: " + (eventName ? eventName : "UNKNOWN"));
+            }
+        };
+
+        loggingSocket.onclose = function(e) {
+            loggingPongPending = false;
+
+            if (loggingStopped) {
+                console.log("Logging manual stop.");
+                return;
+            }
+
+            console.log('Logging socket is closed. Reconnect will be attempted in ' + (loggingTimeout / 1000) + ' seconds.');
+            setTimeout(initLogging, Math.min(15000, loggingTimeout = loggingTimeout * 1.3));
+        };
+    }
+
     <!--END-LOGGING-->
 
     let currentModule = 0;

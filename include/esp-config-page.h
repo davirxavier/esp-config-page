@@ -29,6 +29,10 @@
 #define ESP32_CONP_OTA_WS_PORT 9000
 #endif
 
+#ifndef ESP_CONP_LOGGING_PORT
+#define ESP_CONP_LOGGING_PORT 4000
+#endif
+
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFiUdp.h>
@@ -63,10 +67,12 @@ namespace ESP_CONFIG_PAGE
         String freeHeap = String(ESP.getFreeHeap());
         String otaMaxLength = String(ESP_CONP_WS_BUFFER_SIZE-32);
         String otaPort = String(ESP32_CONP_OTA_WS_PORT);
+        String loggingPort = String(ESP_CONP_LOGGING_PORT);
 
         int nameLen = name.length();
         int infoSize = nameLen + WiFi.macAddress().length() + usedBytes.length() + totalBytes.length() +
-            freeHeap.length() + strlen(__DATE__) + strlen(__TIME__) + otaMaxLength.length() + otaPort.length() + 80;
+            freeHeap.length() + strlen(__DATE__) + strlen(__TIME__) + otaMaxLength.length() + otaPort.length() +
+            loggingPort.length() + 80;
 
         char buf[infoSize];
 
@@ -98,6 +104,9 @@ namespace ESP_CONFIG_PAGE
         strcat(buf, otaMaxLength.c_str());
         strcat(buf, "+");
         strcat(buf, otaPort.c_str());
+        strcat(buf, "+");
+
+        strcat(buf, loggingPort.c_str());
         strcat(buf, "+");
 
         ESP_CONFIG_PAGE::server->sendHeader("Authorization", ESP_CONFIG_PAGE::server->header("Authorization"));
