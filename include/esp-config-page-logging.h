@@ -148,17 +148,18 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
             broadcastMessage((char*) buffer, size, true, LOG);
 
-            if (retentionEnabled && logFile && logFile.size() < maximumSizeBytes)
+            if (retentionEnabled && logFile && logFile.size() >= maximumSizeBytes)
+            {
+                logFile.close();
+                LittleFS.remove(logFilePath);
+                logFile = LittleFS.open(logFilePath, "a");
+            }
+
+            if (retentionEnabled && logFile)
             {
                 logFile.write(buffer, size);
                 logFile.print('\n');
                 logFile.flush();
-            }
-            else if (retentionEnabled && logFile && logFile.size() >= maximumSizeBytes)
-            {
-                logFile.close();
-                LittleFS.remove(logFilePath);
-                logFile = LittleFS.open(logFilePath, "w");
             }
 
             return SERIAL_T::write(buffer, size);
@@ -237,24 +238,24 @@ namespace ESP_CONFIG_PAGE_LOGGING
                     }
                 case ALL_LOGS:
                     {
-                        if (retentionEnabled)
-                        {
-                            retentionEnabled = false;
-                            logFile.close();
-
-                            File file = LittleFS.open(logFilePath, "r");
-                            char buf[file.size()+1]{};
-                            file.readBytes(buf, sizeof(buf)-1);
-                            file.close();
-
-                            sendMessage(client, buf, ALL_LOGS);
-                            logFile = LittleFS.open(logFilePath, "a");
-                            retentionEnabled = true;
-                        }
-                        else
-                        {
-                            sendMessage(client, "", ALL_LOGS);
-                        }
+                        // if (retentionEnabled)
+                        // {
+                        //     retentionEnabled = false;
+                        //     logFile.close();
+                        //
+                        //     File file = LittleFS.open(logFilePath, "r");
+                        //     char buf[file.size()+1]{};
+                        //     file.readBytes(buf, sizeof(buf)-1);
+                        //     file.close();
+                        //
+                        //     sendMessage(client, buf, ALL_LOGS);
+                        //     logFile = LittleFS.open(logFilePath, "a");
+                        //     retentionEnabled = true;
+                        // }
+                        // else
+                        // {
+                        sendMessage(client, "", ALL_LOGS);
+                        // }
                         break;
                     }
                 case PING:
@@ -275,11 +276,6 @@ namespace ESP_CONFIG_PAGE_LOGGING
         isLoggingEnabled = true;
     }
 
-    inline void enableLogging(Stream& serial)
-    {
-        enableLogging(String(), String(), serial);
-    }
-
     inline void disableLogging()
     {
         if (isLoggingEnabled)
@@ -295,7 +291,7 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
         if (millis() - lastClean > 2000)
         {
-            broadcastMessage("P", 1, true, PING);
+            // broadcastMessage("P", 1, true, PING);
 
             if (retentionEnabled && logFile)
             {
