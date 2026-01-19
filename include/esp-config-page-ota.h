@@ -76,6 +76,9 @@ namespace ESP_CONFIG_PAGE
     bool otaMd5Started = false;
     bool isOtaFilesystem = false;
 
+    using OtaStartCallback = std::function<void()>;
+    inline OtaStartCallback otaStartCallback = nullptr;
+
     ESP_CONP_MD5_CTX_T otaMd5Ctx;
 
     inline void otaChecksumStart()
@@ -219,6 +222,11 @@ namespace ESP_CONFIG_PAGE
     {
         ESP_CONFIG_PAGE_LOGGING::disableLogging();
         LOGN("OTA upload start.");
+
+        if (otaStartCallback)
+        {
+            otaStartCallback();
+        }
 
         int command = U_FLASH;
         if (isOtaFilesystem)
