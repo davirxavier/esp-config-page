@@ -5,9 +5,40 @@
 #ifndef DX_ESP_CONFIG_PAGE_H
 #define DX_ESP_CONFIG_PAGE_H
 
+// #define ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+// #define ESP32_CONP_OTA_USE_WEBSOCKETS
+// #define ESP_CONP_WS_BUFFER_SIZE 4096
+
+#if defined(ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA) && defined(ESP8266)
+#undef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+#endif
+
+#ifndef ESP_CONP_WS_BUFFER_SIZE
+#ifdef ESP32
+#define ESP_CONP_WS_BUFFER_SIZE (16 * 1024)
+#else
+#define ESP_CONP_WS_BUFFER_SIZE 4096
+#endif
+#endif
+
+#if ESP_CONP_WS_BUFFER_SIZE < 64
+#error "WebSocket buffer size too small!"
+#endif
+
+#ifndef ESP32_CONP_OTA_WS_PORT
+#define ESP32_CONP_OTA_WS_PORT 9000
+#endif
+
+#ifndef ESP_CONP_LOGGING_PORT
+#define ESP_CONP_LOGGING_PORT 4000
+#endif
+
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFiUdp.h>
+#include <WebSockets.h>
+#include <WebSocketsClient.h>
+#include <WebSocketsServer.h>
 #include <esp-config-page-logging.h>
 #include <esp-config-defines.h>
 #include <esp-config-page-ca.h>
@@ -34,10 +65,14 @@ namespace ESP_CONFIG_PAGE
         String totalBytes = String(fsInfo.totalBytes);
 #endif
         String freeHeap = String(ESP.getFreeHeap());
+        String otaMaxLength = String(ESP_CONP_WS_BUFFER_SIZE-32);
+        String otaPort = String(ESP32_CONP_OTA_WS_PORT);
+        String loggingPort = String(ESP_CONP_LOGGING_PORT);
 
         int nameLen = name.length();
         int infoSize = nameLen + WiFi.macAddress().length() + usedBytes.length() + totalBytes.length() +
-            freeHeap.length() + strlen(__DATE__) + strlen(__TIME__) + 64;
+            freeHeap.length() + strlen(__DATE__) + strlen(__TIME__) + otaMaxLength.length() + otaPort.length() +
+            loggingPort.length() + 80;
 
         char buf[infoSize];
 
@@ -52,12 +87,26 @@ namespace ESP_CONFIG_PAGE
         strcat(buf, freeHeap.c_str());
         strcat(buf, "+");
 
-        strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP ? "0" : "1");
+        strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP_STA ? "0" : "1");
         strcat(buf, "+");
 
         strcat(buf, __DATE__);
         strcat(buf, " ");
         strcat(buf, __TIME__);
+        strcat(buf, "+");
+
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        strcat(buf, "1+");
+#else
+        strcat(buf, "0+");
+#endif
+
+        strcat(buf, otaMaxLength.c_str());
+        strcat(buf, "+");
+        strcat(buf, otaPort.c_str());
+        strcat(buf, "+");
+
+        strcat(buf, loggingPort.c_str());
         strcat(buf, "+");
 
         ESP_CONFIG_PAGE::server->sendHeader("Authorization", ESP_CONFIG_PAGE::server->header("Authorization"));
@@ -178,6 +227,11 @@ namespace ESP_CONFIG_PAGE
             const Modules m = enabledModules[i];
             switch (m)
             {
+            case OTA:
+                {
+                    otaLoop();
+                    break;
+                }
             case WIRELESS:
                 {
                     wirelessLoop();

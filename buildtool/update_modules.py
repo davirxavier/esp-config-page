@@ -3,7 +3,7 @@ import gzip
 import re
 import argparse
 
-modules = ['ota', 'wireless', 'ca', 'env', 'files', 'logging']
+modules = ['ota', 'wireless', 'ca', 'env', 'files', 'logging', 'md5']
 
 parser = argparse.ArgumentParser(prog="esp-config-page html build tool.",
                                  description="Python script that can be used to manage the modules that will be included in the config page html.")

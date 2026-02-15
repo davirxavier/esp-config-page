@@ -5,10 +5,45 @@
 #ifndef ESP_CONFIG_PAGE_OTA_H
 #define ESP_CONFIG_PAGE_OTA_H
 
+#ifdef ESP32
+#include <mbedtls/md5.h>
+#elif ESP8266
+#include <md5.h>
+#endif
+
 #ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #warning  "Using ESP-IDF OTA API instead of Arduino's"
+#endif
+
+#ifdef ESP32
+
+#ifdef mbedtls_md5_starts_ret
+#define ESP_CONP_MD5_START(ctx) mbedtls_md5_starts_ret(ctx)
+#else
+#define ESP_CONP_MD5_START(ctx) mbedtls_md5_starts(ctx)
+#endif
+
+#ifdef mbedtls_md5_update_ret
+#define ESP_CONP_MD5_UPDATE(ctx, data, len) esp_md5_update_ret(ctx, data, len)
+#else
+#define ESP_CONP_MD5_UPDATE(ctx, data, len) esp_md5_update(ctx, data, len)
+#endif
+
+#ifdef mbedtls_md5_finish_ret
+#define ESP_CONP_MD5_END(ctx, res) mbedtls_md5_finish_ret(ctx, res)
+#else
+#define ESP_CONP_MD5_END(ctx, res) mbedtls_md5_finish(ctx, res)
+#endif
+
+#define ESP_CONP_MD5_CTX_T mbedtls_md5_context
+
+#elif ESP8266
+#define ESP_CONP_MD5_START(ctx) MD5Init(ctx)
+#define ESP_CONP_MD5_UPDATE(ctx, data, len) MD5Update(ctx, data, len)
+#define ESP_CONP_MD5_END(ctx, res) MD5Final(res, ctx)
+#define ESP_CONP_MD5_CTX_T md5_context_t
 #endif
 
 namespace ESP_CONFIG_PAGE
@@ -27,20 +62,174 @@ namespace ESP_CONFIG_PAGE
 #endif
 #endif
 
-    inline void ota(bool isFilesystem)
-    {
-        ESP_CONFIG_PAGE_LOGGING::disableLogging();
 
-        HTTPUpload& upload = server->upload();
-
-#ifdef ESP32
-        LOGF("Upload info: current size is %d, total sent size is %d, status is %d, name is %s\n", upload.currentSize, upload.totalSize, upload.status, upload.name.c_str());
-#elif ESP8266
-        LOGF("Upload info: current size is %d, total sent size is %d, total file size is %d, status is %d, name is %s\n", upload.currentSize, upload.totalSize, upload.contentLength, upload.status, upload.name.c_str());
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+    WebSocketsServer otaWsServer(ESP32_CONP_OTA_WS_PORT);
+    ESP_CONFIG_PAGE_LOGGING::ConnectedClient *otaClient = nullptr;
+    unsigned long lastWsServerUpdate = 0;
 #endif
 
+    unsigned long otaTimer = 0;
+    unsigned long otaTimeout = 60000;
+    bool otaStarted = false;
+    char otaMd5[33]{};
+    bool otaMd5Started = false;
+    bool isOtaFilesystem = false;
+
+    using OtaStartCallback = std::function<void()>;
+    inline OtaStartCallback otaStartCallback = nullptr;
+
+    ESP_CONP_MD5_CTX_T otaMd5Ctx;
+
+    inline void otaChecksumStart()
+    {
+        ESP_CONP_MD5_START(&otaMd5Ctx);
+        otaMd5Started = true;
+    }
+
+    inline void otaChecksumWrite(const uint8_t* data, size_t len)
+    {
+        ESP_CONP_MD5_UPDATE(&otaMd5Ctx, data, len);
+    }
+
+    inline void otaChecksumFree()
+    {
+        if (!otaMd5Started)
+        {
+            return;
+        }
+
+#ifdef ESP32
+        mbedtls_md5_free(&otaMd5Ctx);
+#elif ESP8266
+        otaMd5Ctx = ESP_CONP_MD5_CTX_T();
+#endif
+
+        otaMd5Started = false;
+    }
+
+    inline bool otaChecksumVerify(const char* expectedMd5)
+    {
+        unsigned char md5Result[16];
+        ESP_CONP_MD5_END(&otaMd5Ctx, md5Result);
+        otaChecksumFree();
+
+        char md5String[33];
+        for (int i = 0; i < 16; i++) {
+            sprintf(&md5String[i * 2], "%02x", md5Result[i]);
+        }
+
+        LOGF("Verifying OTA checksum, expected/actual: %s/%s\n", expectedMd5, md5String);
+        return strcasecmp(md5String, expectedMd5) == 0;
+    }
+
+    enum OtaEventType
+    {
+        AUTH = 'A',
+        RECONNECTION = 'R',
+        START_FILESYSTEM = 'U',
+        START_FIRMWARE = 'u',
+        WRITE = 'W',
+        END = 'N',
+
+        ERROR = 'E',
+        SUCCESS = 'S',
+        AUTH_SUCCESS = 'a',
+        NEXT_CHUNK = 'C',
+        PING = 'P',
+    };
+
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+    inline void registerOtaClient(uint8_t id)
+    {
+        if (otaClient != nullptr)
+        {
+            delete otaClient;
+            otaClient = nullptr;
+        }
+
+        otaClient = new ESP_CONFIG_PAGE_LOGGING::ConnectedClient(id, millis(), false);
+    }
+
+    inline void releaseOtaClient()
+    {
+        if (otaClient == nullptr)
+        {
+            return;
+        }
+
+        if (otaWsServer.clientIsConnected(otaClient->id))
+        {
+            otaWsServer.disconnect(otaClient->id);
+        }
+
+        delete otaClient;
+        otaClient = nullptr;
+    }
+
+    inline bool hasOtaClient()
+    {
+        return otaClient != nullptr;
+    }
+#endif
+
+    inline void otaAbort()
+    {
+        if (!otaStarted)
+        {
+            return;
+        }
+
+        LOGN("Aborting OTA update.");
+
+#ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+        esp_ota_abort(otaHandle);
+#elifdef ESP32
+        Update.abort();
+#endif
+
+        delay(1000);
+        ESP.restart();
+    }
+
+    inline void sendResponse(const char *status, OtaEventType eventType = SUCCESS)
+    {
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        char toSend[strlen(status) + 3]{};
+        snprintf(toSend, sizeof(toSend), "%c%s", eventType, status);
+        otaWsServer.sendTXT(otaClient->id, toSend);
+#else
+        server->send(200, "text/plain", status);
+#endif
+    }
+
+    inline void sendErrorResponse(const char *header, const char *err, OtaEventType eventType = ERROR)
+    {
+        char toSend[strlen(header) + strlen(err) + 3]{};
+        snprintf(toSend, sizeof(toSend), "%c%s%s", eventType, header, err);
+
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        otaWsServer.sendTXT(otaClient->id, toSend);
+        releaseOtaClient();
+#else
+        server->send(400, "text/plain", toSend);
+#endif
+
+        otaAbort();
+    }
+
+    inline void otaStart(const char *hash)
+    {
+        ESP_CONFIG_PAGE_LOGGING::disableLogging();
+        LOGN("OTA upload start.");
+
+        if (otaStartCallback)
+        {
+            otaStartCallback();
+        }
+
         int command = U_FLASH;
-        if (isFilesystem)
+        if (isOtaFilesystem)
         {
             LOGN("OTA update set to FILESYSTEM mode.");
 #ifdef ESP32
@@ -50,195 +239,403 @@ namespace ESP_CONFIG_PAGE
 #endif
         }
 
-        LOGF("Upload status: %d\n", upload.status);
-        if (upload.status == UPLOAD_FILE_START)
-        {
-            LOGN("Starting OTA update.");
 #ifdef ESP8266
-            WiFiUDP::stopAll();
+        WiFiUDP::stopAll();
 #endif
 
-#ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
-            if (isFilesystem)
-            {
-                writeOffset = 0;
-
-                otaPartition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "spiffs");
-                if (otaPartition == NULL) {
-                    LOGN("Error when starting update.");
-                    server->send(500, "text/plain", "Error starting update, filesystem partition is null");
-                    return;
-                }
-
-                esp_err_t err = esp_partition_erase_range(otaPartition, 0, otaPartition->size);
-                if (err != ESP_OK) {
-                    LOGN("Error when starting update.");
-                    server->send(500, "text/plain", "Error when erasing filesystem partition");
-                    return;
-                }
-            }
-            else
-            {
-                otaPartition = esp_ota_get_next_update_partition(NULL);
-                if (otaPartition == NULL)
-                {
-                    LOGN("Error when starting update.");
-                    server->send(500, "text/plain", "Start update error, next update partition is null");
-                    return;
-                }
-
-                esp_err_t err = esp_ota_begin(otaPartition, OTA_SIZE_UNKNOWN, &otaHandle);
-                if (err != ESP_OK) {
-                    LOGN("Error when starting update.");
-                    server->send(500, "text/plain", "Error when setting up firmware ota update");
-                    return;
-                }
-            }
-#else
 #ifdef ESP32
-            uint32_t maxSpace = UPDATE_SIZE_UNKNOWN;
+        uint32_t maxSpace = UPDATE_SIZE_UNKNOWN;
 #elif ESP8266
-            uint32_t maxSpace = 0;
-            if (command == U_FLASH) {
-                maxSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-            } else {
-                maxSpace = FS_end - FS_start;
-            }
-            close_all_fs();
+        uint32_t maxSpace = 0;
+        if (command == U_FLASH) {
+            maxSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+        } else {
+            maxSpace = FS_end - FS_start;
+        }
+        close_all_fs();
 #endif
 
-            LOGF("Calculate max space is %d.\n", maxSpace);
-            if (!Update.begin(maxSpace, command))
-            {
-                // start with max available size
+        if (hash == nullptr)
+        {
+            LOGN("No update MD5 sent.");
+            memset(otaMd5, 0, sizeof(otaMd5));
+        }
+        else
+        {
+            LOGF("Update MD5 hash: %s\n", hash);
+            snprintf(otaMd5, sizeof(otaMd5), "%s", hash);
+            otaChecksumStart();
+        }
+
+#ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+        if (isOtaFilesystem)
+        {
+            writeOffset = 0;
+
+            otaPartition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "spiffs");
+            if (otaPartition == NULL) {
                 LOGN("Error when starting update.");
-                server->send(400, "text/plain", GET_UPDATE_ERROR_STR);
+                sendErrorResponse("", "Error starting update, filesystem partition is null");
+                return;
             }
-#endif
+
+            esp_err_t err = esp_partition_erase_range(otaPartition, 0, otaPartition->size);
+            if (err != ESP_OK) {
+                LOGN("Error when starting update.");
+                sendErrorResponse("", "Error when erasing filesystem partition");
+                return;
+            }
         }
-        else if (upload.status == UPLOAD_FILE_WRITE)
+        else
         {
-            LOGN("Update write.");
-
-#ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
-            if (isFilesystem)
+            otaPartition = esp_ota_get_next_update_partition(NULL);
+            if (otaPartition == NULL)
             {
-                if (!otaPartition)
-                {
-                    LOGN("Error when writing to update.");
-                    server->send(500, "text/plain", "Error writing to partition, is null");
-                    return;
-                }
-
-                esp_err_t err = esp_partition_write(otaPartition, writeOffset, upload.buf, upload.currentSize);
-                if (err != ESP_OK) {
-                    LOGN("Error when writing to update.");
-                    server->send(500, "text/plain", String(err));
-                    return;
-                }
-
-                writeOffset += upload.currentSize;
+                LOGN("Error when starting update.");
+                sendErrorResponse("", "Start update error, next update partition is null");
+                return;
             }
-            else
-            {
-                if (otaHandle == 0)
-                {
-                    LOGN("Error when writing to update.");
-                    server->send(500, "text/plain", "Ota handle is null");
-                    return;
-                }
 
-                esp_ota_write(otaHandle, (const void*) upload.buf, upload.currentSize);
+            esp_err_t err = esp_ota_begin(otaPartition, OTA_SIZE_UNKNOWN, &otaHandle);
+            if (err != ESP_OK) {
+                LOGN("Error when starting update.");
+                sendErrorResponse("", "Error when setting up firmware ota update");
+                return;
             }
-#else
-            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
-            {
-                LOGN("Error when writing update.");
-                server->send(400, "text/plain", GET_UPDATE_ERROR_STR);
-            }
-#endif
         }
-        else if (upload.status == UPLOAD_FILE_END)
+#else
+        if (!Update.begin(maxSpace, command))
         {
-            LOGN("Update ended.");
-
-#ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
-            if (isFilesystem)
-            {
-                server->send(200, "text/plain", "");
-                esp_restart();
-            }
-            else {
-                if (otaHandle == 0)
-                {
-                    LOGN("Error when writing to update.");
-                    server->send(500, "text/plain", "Ota handle is null");
-                    esp_restart();
-                    return;
-                }
-
-                esp_err_t err = esp_ota_end(otaHandle);
-                if (err != ESP_OK) {
-                    LOGF("Ota update unsuccessful, err: %x\n", err);
-                    server->send(500, "text/plain", String("Ota update unsuccessful, err: ") + err);
-                    esp_restart();
-                    return;
-                }
-
-                err = esp_ota_set_boot_partition(otaPartition);
-                if (err != ESP_OK) {
-                    LOGF("Error setting ota partition as new boot partition: %x\n", err);
-                    server->send(500, "text/plain", "Error setting ota partition as new boot partition.");
-                    esp_restart();
-                    return;
-                }
-
-                LOGN("Update successful");
-            }
-#else
-            if (Update.end(true))
-            {
-                server->send(200);
-            }
-            else
-            {
-                LOGN("Error finishing update.");
-                server->send(400, "text/plain", GET_UPDATE_ERROR_STR);
-            }
-#endif
+            // start with max available size
+            LOGF("Error when starting update: %s\n", GET_UPDATE_ERROR_STR);
+            sendErrorResponse("Error starting update: ", GET_UPDATE_ERROR_STR);
         }
-        delay(10);
+#endif
+
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        otaTimer = millis();
+        otaStarted = true;
+#endif
     }
 
-    inline void otaEnd()
+    inline void otaWrite(uint8_t *buf, size_t bufSize)
     {
-        server->send(200, "text/plain", "");
+        otaChecksumWrite(buf, bufSize);
+
+#ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+        if (isOtaFilesystem)
+        {
+            if (!otaPartition)
+            {
+                LOGN("Error when writing to update.");
+                sendErrorResponse("", "Error writing to partition, is null");
+                return;
+            }
+
+            esp_err_t err = esp_partition_write(otaPartition, writeOffset, buf, bufSize);
+            if (err != ESP_OK) {
+                LOGN("Error when writing to update.");
+                sendErrorResponse("Error writing: ", String(err).c_str());
+                return;
+            }
+
+            writeOffset += bufSize;
+        }
+        else
+        {
+            if (otaHandle == 0)
+            {
+                LOGN("Error when writing to update.");
+                server->send(500, "text/plain", "Ota handle is null");
+                return;
+            }
+
+            esp_ota_write(otaHandle, buf, bufSize);
+        }
+#else
+        size_t written = Update.write(buf, bufSize);
+        if (written != bufSize)
+        {
+            LOGF("Error when writing update, written only %zu of %zu bytes, error str: %s\n", written, bufSize, GET_UPDATE_ERROR_STR);
+            sendErrorResponse("Error with ota write: ", GET_UPDATE_ERROR_STR);
+            return;
+        }
+#endif
+
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        otaTimer = millis();
+        sendResponse("", NEXT_CHUNK);
+#endif
+    }
+
+    inline void otaFinish()
+    {
+        LOGN("Finishing ota update.");
+
+        if (strlen(otaMd5) > 0 && !otaChecksumVerify(otaMd5))
+        {
+            constexpr char err[] = "Error when finishing ota update: partition checksum validation failed.";
+            LOGN(err);
+            sendErrorResponse("", err);
+            return;
+        }
+
+#ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+        if (!isOtaFilesystem)
+        {
+            if (otaHandle == 0)
+            {
+                LOGN("Error when writing to update.");
+                sendErrorResponse("", "Finish update error: Ota handle is null");
+                esp_restart();
+                return;
+            }
+
+            esp_err_t err = esp_ota_end(otaHandle);
+            if (err != ESP_OK) {
+                LOGF("Ota update unsuccessful, err: %x\n", err);
+                sendErrorResponse("Ota update unsuccessful, err: ", String(err).c_str());
+                esp_restart();
+                return;
+            }
+
+            err = esp_ota_set_boot_partition(otaPartition);
+            if (err != ESP_OK) {
+                LOGF("Error setting ota partition as new boot partition: %x\n", err);
+                sendErrorResponse("", "Error setting ota partition as new boot partition.");
+                esp_restart();
+                return;
+            }
+
+            LOGN("Update successful");
+        }
+#else
+        if (Update.end(true))
+        {
+            LOGN("Update successful");
+            sendResponse("Success");
+        }
+        else
+        {
+            LOGN("Error finishing update.");
+            sendErrorResponse("Error finishing update: ", GET_UPDATE_ERROR_STR);
+        }
+#endif
+
+        delay(10);
+
+        sendResponse("Update successful");
         LOGN("OTA update finished, restarting.");
-        delay(100);
+        delay(1000);
         ESP.restart();
     }
 
+#ifndef ESP32_CONP_OTA_USE_WEBSOCKETS
+    inline void handleUpdate(bool filesystem)
+    {
+        VALIDATE_AUTH();
+
+        HTTPUpload upload = server->upload();
+        String md5 = server->arg("md5");
+        isOtaFilesystem = filesystem;
+
+        if (upload.status == UPLOAD_FILE_START)
+        {
+            otaStarted = true;
+            otaStart(md5.isEmpty() ? nullptr : md5.c_str());
+        }
+        else if (upload.status == UPLOAD_FILE_WRITE)
+        {
+            otaWrite(upload.buf, upload.currentSize);
+        }
+        else if (upload.status == UPLOAD_FILE_ABORTED)
+        {
+            otaAbort();
+        }
+    }
+#endif
+
     inline void enableOtaModule()
     {
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        otaWsServer.setMaxDataSize(ESP_CONP_WS_BUFFER_SIZE);
+
+        otaWsServer.onEvent([](uint8_t clientId, WStype_t type, uint8_t *payload, size_t length)
+        {
+            if (type == WStype_CONNECTED)
+            {
+                if (hasOtaClient())
+                {
+                    sendErrorResponse("", "socket full");
+                    return;
+                }
+
+                LOGF("OTA client connected with id %d\n", clientId);
+                registerOtaClient(clientId);
+            }
+            else if (type == WStype_DISCONNECTED && otaClient != nullptr)
+            {
+                LOGF("OTA client disconnected with id %d\n", clientId);
+                releaseOtaClient();
+            }
+            else if (type == WStype_TEXT || type == WStype_BIN)
+            {
+                if (!hasOtaClient())
+                {
+                    return;
+                }
+
+                if (otaClient->id != clientId)
+                {
+                    sendErrorResponse("", "socket full");
+                    return;
+                }
+
+                char eventTypeChar = payload[0];
+                uint8_t *payloadWithoutEvent = length == 0 ? payload : payload+1;
+                size_t lengthWithoutEvent = length == 0 ? 0 : length-1;
+
+                switch (eventTypeChar)
+                {
+                case OtaEventType::RECONNECTION:
+                case OtaEventType::AUTH:
+                    {
+                        if (eventTypeChar == OtaEventType::AUTH && otaStarted)
+                        {
+                            LOGN("Had another OTA running already, aborting.");
+                            otaAbort();
+                        }
+
+                        char usernameAndPassword[lengthWithoutEvent+1]{};
+                        memcpy(usernameAndPassword, payloadWithoutEvent, lengthWithoutEvent);
+
+                        char *separator = strchr(usernameAndPassword, ':');
+                        if (separator == nullptr)
+                        {
+                            return;
+                        }
+
+                        separator[0] = 0;
+                        char *password = separator+1;
+
+                        if (strcmp(usernameAndPassword, ESP_CONFIG_PAGE::username.c_str()) != 0 ||
+                            strcmp(password, ESP_CONFIG_PAGE::password.c_str()) != 0)
+                        {
+                            sendErrorResponse("", "Invalid auth.");
+                            return;
+                        }
+
+                        if (otaClient != nullptr)
+                        {
+                            otaClient->authed = true;
+                            if (otaStarted)
+                            {
+                                sendResponse("", NEXT_CHUNK);
+                            }
+                            else
+                            {
+                                sendResponse("", AUTH_SUCCESS);
+                            }
+                        }
+                        break;
+                    }
+                case OtaEventType::START_FIRMWARE:
+                    {
+                        if (!otaStarted)
+                        {
+                            isOtaFilesystem = false;
+                            otaStart(lengthWithoutEvent == 0 ? nullptr : (char*) payloadWithoutEvent);
+                            sendResponse("", OtaEventType::NEXT_CHUNK);
+                        }
+                        break;
+                    }
+                case OtaEventType::START_FILESYSTEM:
+                    {
+                        if (!otaStarted)
+                        {
+                            isOtaFilesystem = true;
+                            otaStart(lengthWithoutEvent == 0 ? nullptr : (char*) payloadWithoutEvent);
+                            sendResponse("", OtaEventType::NEXT_CHUNK);
+                        }
+                        break;
+                    }
+                case OtaEventType::WRITE:
+                    {
+                        otaWrite(payloadWithoutEvent, lengthWithoutEvent);
+                        break;
+                    }
+                case OtaEventType::END:
+                    {
+                        otaFinish();
+                        break;
+                    }
+                default:
+                    {
+                        LOGF("Invalid event: %c\n", eventTypeChar);
+                        char str[] = {eventTypeChar, 0};
+                        sendErrorResponse("Invalid event received: ", str);
+                        break;
+                    }
+                }
+            }
+        });
+
+        otaWsServer.begin();
+#else
         server->on(F("/config/update/firmware"), HTTP_POST, []()
                    {
                        VALIDATE_AUTH();
-                       otaEnd();
+                       otaFinish();
+                       LOGN("OTA finished");
                    }, []()
                    {
-                       VALIDATE_AUTH();
-                       ota(false);
+                       handleUpdate(false);
                    });
 
         server->on(F("/config/update/filesystem"), HTTP_POST, []()
                    {
                        VALIDATE_AUTH();
-                       // otaEnd();
+                       otaFinish();
+                       LOGN("OTA finished");
                    }, []()
                    {
-                       VALIDATE_AUTH();
-                       ota(true);
+                       handleUpdate(true);
                    });
+#endif
+    }
+
+    inline void otaLoop()
+    {
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        otaWsServer.loop();
+
+        if (millis() - lastWsServerUpdate > 2000)
+        {
+            if (otaClient != nullptr)
+            {
+                char str[] = {OtaEventType::PING, 0};
+                otaWsServer.sendTXT(otaClient->id, str);
+            }
+
+            if (otaClient != nullptr && !otaClient->authed && millis() - otaClient->connectedTime > 10000)
+            {
+                auto clientId = otaClient->id;
+                if (otaWsServer.clientIsConnected(clientId))
+                {
+                    sendErrorResponse("OTA Error: ", "Auth timeout");
+                }
+            }
+
+            if (otaStarted && millis() - otaTimer > otaTimeout)
+            {
+                LOGN("OTA timed out.");
+                otaStarted = false;
+                otaAbort();
+            }
+
+            lastWsServerUpdate = millis();
+        }
+#endif
     }
 }
 

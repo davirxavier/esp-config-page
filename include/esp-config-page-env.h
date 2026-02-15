@@ -58,7 +58,7 @@ namespace ESP_CONFIG_PAGE
 
         if (envVarStorage != nullptr)
         {
-            LOGN("Recoving env vars from storage.");
+            LOGN("Recovering env vars from storage.");
             for (uint8_t i = 0; i < envVarCount; i++)
             {
                 EnvVar *var = envVars[i];
