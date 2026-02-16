@@ -15,6 +15,8 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #warning  "Using ESP-IDF OTA API instead of Arduino's"
+#else
+#include <Update.h>
 #endif
 
 #ifdef ESP32
@@ -67,6 +69,8 @@ namespace ESP_CONFIG_PAGE
     WebSocketsServer otaWsServer(ESP32_CONP_OTA_WS_PORT);
     ESP_CONFIG_PAGE_LOGGING::ConnectedClient *otaClient = nullptr;
     unsigned long lastWsServerUpdate = 0;
+#else
+    REQUEST_T currentRequest = nullptr;
 #endif
 
     unsigned long otaTimer = 0;
@@ -75,6 +79,7 @@ namespace ESP_CONFIG_PAGE
     char otaMd5[33]{};
     bool otaMd5Started = false;
     bool isOtaFilesystem = false;
+    bool otaRestart = false;
 
     using OtaStartCallback = std::function<void()>;
     inline OtaStartCallback otaStartCallback = nullptr;
@@ -188,8 +193,7 @@ namespace ESP_CONFIG_PAGE
         Update.abort();
 #endif
 
-        delay(1000);
-        ESP.restart();
+        otaRestart = true;
     }
 
     inline void sendResponse(const char *status, OtaEventType eventType = SUCCESS)
@@ -199,7 +203,7 @@ namespace ESP_CONFIG_PAGE
         snprintf(toSend, sizeof(toSend), "%c%s", eventType, status);
         otaWsServer.sendTXT(otaClient->id, toSend);
 #else
-        server->send(200, "text/plain", status);
+        currentRequest->send(200, "text/plain", status);
 #endif
     }
 
@@ -212,7 +216,7 @@ namespace ESP_CONFIG_PAGE
         otaWsServer.sendTXT(otaClient->id, toSend);
         releaseOtaClient();
 #else
-        server->send(400, "text/plain", toSend);
+        currentRequest->send(400, "text/plain", toSend);
 #endif
 
         otaAbort();
@@ -228,6 +232,7 @@ namespace ESP_CONFIG_PAGE
             otaStartCallback();
         }
 
+#ifndef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
         int command = U_FLASH;
         if (isOtaFilesystem)
         {
@@ -253,6 +258,7 @@ namespace ESP_CONFIG_PAGE
             maxSpace = FS_end - FS_start;
         }
         close_all_fs();
+#endif
 #endif
 
         if (hash == nullptr)
@@ -346,7 +352,7 @@ namespace ESP_CONFIG_PAGE
             if (otaHandle == 0)
             {
                 LOGN("Error when writing to update.");
-                server->send(500, "text/plain", "Ota handle is null");
+                sendErrorResponse("Error writing: ", "Ota handle is null");
                 return;
             }
 
@@ -413,7 +419,6 @@ namespace ESP_CONFIG_PAGE
         if (Update.end(true))
         {
             LOGN("Update successful");
-            sendResponse("Success");
         }
         else
         {
@@ -422,37 +427,79 @@ namespace ESP_CONFIG_PAGE
         }
 #endif
 
-        delay(10);
-
         sendResponse("Update successful");
-        LOGN("OTA update finished, restarting.");
-        delay(1000);
-        ESP.restart();
+        otaRestart = true;
     }
 
-#ifndef ESP32_CONP_OTA_USE_WEBSOCKETS
-    inline void handleUpdate(bool filesystem)
+    enum UploadEventType
     {
-        VALIDATE_AUTH();
+        UPLOAD_START,
+        UPLOAD_WRITE,
+        UPLOAD_END,
+        UPLOAD_ABORT,
+    };
 
-        HTTPUpload upload = server->upload();
-        String md5 = server->arg("md5");
+#ifndef ESP32_CONP_OTA_USE_WEBSOCKETS
+    inline void handleUpdate(bool filesystem, REQUEST_T request, uint8_t *data, size_t len, UploadEventType event, bool writeOnStart = false)
+    {
         isOtaFilesystem = filesystem;
+        // LOGF("OTA event: %d, len: %zu\n", event, len);
 
-        if (upload.status == UPLOAD_FILE_START)
+        if (event == UPLOAD_START)
         {
+            String md5 = request->arg("md5");
+            currentRequest = request;
             otaStarted = true;
             otaStart(md5.isEmpty() ? nullptr : md5.c_str());
         }
-        else if (upload.status == UPLOAD_FILE_WRITE)
+
+        if ((event == UPLOAD_WRITE || (writeOnStart && event == UPLOAD_START)) && len > 0)
         {
-            otaWrite(upload.buf, upload.currentSize);
+            otaWrite(data, len);
         }
-        else if (upload.status == UPLOAD_FILE_ABORTED)
+
+        if (event == UPLOAD_END)
+        {
+            otaFinish();
+            LOGN("OTA finished");
+        }
+
+        if (event == UPLOAD_ABORT)
         {
             otaAbort();
         }
     }
+
+    inline UploadEventType mapValuesToUploadEvent(
+#ifdef ESP_CONP_ASYNC_WEBSERVER
+        size_t index)
+    {
+        UploadEventType event = UPLOAD_WRITE;
+        if (index == 0)
+        {
+            event = UPLOAD_START;
+        }
+        return event;
+    }
+#else
+        HTTPUpload upload)
+    {
+        if (upload.status == UPLOAD_FILE_START)
+        {
+            return UPLOAD_START;
+        }
+        else if (upload.status == UPLOAD_FILE_END)
+        {
+            return UPLOAD_END;
+        }
+        else if (upload.status == UPLOAD_FILE_WRITE)
+        {
+            return UPLOAD_WRITE;
+        }
+
+        return UPLOAD_ABORT;
+    }
+#endif
 #endif
 
     inline void enableOtaModule()
@@ -582,30 +629,71 @@ namespace ESP_CONFIG_PAGE
 
         otaWsServer.begin();
 #else
-        server->on(F("/config/update/firmware"), HTTP_POST, []()
-                   {
-                       VALIDATE_AUTH();
-                       otaFinish();
-                       LOGN("OTA finished");
-                   }, []()
-                   {
-                       handleUpdate(false);
-                   });
+        const char firmwareUri[] = "/config/update/firmware";
+        const char filesystemUri[] = "/config/update/filesystem";
 
-        server->on(F("/config/update/filesystem"), HTTP_POST, []()
-                   {
-                       VALIDATE_AUTH();
-                       otaFinish();
-                       LOGN("OTA finished");
-                   }, []()
-                   {
-                       handleUpdate(true);
-                   });
+#ifdef ESP_CONP_ASYNC_WEBSERVER
+        server->on(AsyncURIMatcher::exact(firmwareUri),
+            HTTP_POST,
+            [](REQUEST_T request)
+            {
+                VALIDATE_AUTH(request);
+                handleUpdate(false, request, {}, 0, UPLOAD_END);
+            }, [](REQUEST_T request, String filename, size_t index, uint8_t *data, size_t len, bool final)
+            {
+                VALIDATE_AUTH(request);
+                handleUpdate(false, request, data, len, mapValuesToUploadEvent(index), true);
+            });
+
+        server->on(AsyncURIMatcher::exact(filesystemUri),
+            HTTP_POST,
+            [](REQUEST_T request)
+            {
+                VALIDATE_AUTH(request);
+                handleUpdate(true, request, {}, 0, UPLOAD_END);
+            }, [](REQUEST_T request, String filename, size_t index, uint8_t *data, size_t len, bool final)
+            {
+                VALIDATE_AUTH(request);
+                handleUpdate(true, request, data, len, mapValuesToUploadEvent(index), true);
+            });
+#else
+        server->on(firmwareUri,
+            HTTP_POST,
+            []()
+            {
+                VALIDATE_AUTH(server);
+                handleUpdate(false, server, {}, 0, UPLOAD_END);
+            }, []()
+            {
+                VALIDATE_AUTH(server);
+                HTTPUpload upload = server->upload();
+                handleUpdate(false, server, upload.buf, upload.currentSize, mapValuesToUploadEvent(upload));
+            });
+
+        server->on(filesystemUri,
+            HTTP_POST,
+            []()
+            {
+                VALIDATE_AUTH(server);
+                handleUpdate(true, server, {}, 0, UPLOAD_END);
+            }, []()
+            {
+                VALIDATE_AUTH(server);
+                HTTPUpload upload = server->upload();
+                handleUpdate(true, server, upload.buf, upload.currentSize, mapValuesToUploadEvent(upload));
+            });
+#endif
 #endif
     }
 
     inline void otaLoop()
     {
+        if (otaRestart)
+        {
+            delay(1500);
+            ESP.restart();
+        }
+
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
         otaWsServer.loop();
 

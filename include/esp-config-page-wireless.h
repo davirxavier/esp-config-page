@@ -138,7 +138,7 @@ namespace ESP_CONFIG_PAGE
         WiFi.softAPConfig(apIp, apIp, IPAddress(255, 255, 255, 0));
     }
 
-    inline void wifiGet()
+    inline void wifiGet(REQUEST_T request)
     {
         if (WiFi.status() == WL_NO_SSID_AVAIL)
         {
@@ -150,13 +150,17 @@ namespace ESP_CONFIG_PAGE
         int count = WiFi.scanNetworks();
         if (count < 0)
         {
-            server->send(500, "text/plain", "Error while searching networks.");
+            request->send(500, "text/plain", "Error while searching networks.");
             return;
         }
 
-        String ssid = WiFi.SSID();
-        int bufSize = ssid.length() + 8;
         int wifiStatus = WiFi.status();
+        int lastConError = lastConnectionError != -1 ? lastConnectionError : wifiStatus;
+
+        String ssid = WiFi.SSID();
+        int infoSize = 0;
+        infoSize += ssid.length() + 1;
+        infoSize += ESP_CONP_NUM_LEN("%d", lastConError) + 1;
 
         char ssids[count][33];
         if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1)
@@ -169,52 +173,65 @@ namespace ESP_CONFIG_PAGE
                 const bss_info *it = WiFi.getScanInfoByIndex(i);
 #endif
 
-                 if (!it)
-                 {
-                     ssids[i][0] = '\0';
-                     continue;
-                 }
+                memset(ssids[i], 0, 32);
 
-                memcpy(ssids[i], it->ssid, sizeof(it->ssid));
-                ssids[count][32] = '\0';
-                bufSize += strlen(ssids[count]) + 10;
+                if (!it)
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < 32; j++)
+                {
+                    if (it->ssid[j] == 0)
+                    {
+                        ssids[i][j] = 0;
+                        break;
+                    }
+
+                    ssids[i][j] = (char) it->ssid[j];
+                }
+
+                infoSize += strlen(ssids[i]) + 1;
+                infoSize += ESP_CONP_NUM_LEN("%d", WiFi.RSSI(i)) + 1;
             }
         }
 
-        char buf[bufSize];
-        buf[0] = '\0';
+        char numBuf[33]{};
 
-        strcat(buf, ssid.c_str());
-        strcat(buf, "\n");
-        strcat(buf, String(lastConnectionError != -1 ? lastConnectionError : wifiStatus).c_str());
-        strcat(buf, "\n");
+        ResponseContext c{};
+        initResponseContext(200, "text/plain", infoSize, c);
+        startResponse(request, c);
+
+        writeResponse(ssid.c_str(), c);
+        writeResponse("\n", c);
+
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%d", lastConError);
+        writeResponse(numBuf, c);
+        writeResponse("\n", c);
 
         if (wifiStatus != WL_IDLE_STATUS || lastConnectionError != -1)
         {
             for (int i = 0; i < count; i++)
             {
-                uint32_t rssi = WiFi.RSSI(i);
-                int rssiLength = snprintf(nullptr, 0, "%d", rssi);
-                char rssibuf[rssiLength + 1];
-                sprintf(rssibuf, "%d", rssi);
+                writeResponse(ssids[i], c);
+                writeResponse("\n", c);
 
-                strcat(buf, ssids[i]);
-                strcat(buf, "\n");
-                strcat(buf, rssibuf);
-                strcat(buf, "\n");
+                ESP_CONP_WRITE_NUMBUF(numBuf, "%d", WiFi.RSSI(i));
+                writeResponse(numBuf, c);
+                writeResponse("\n", c);
             }
         }
 
-        server->send(200, "text/plain", buf);
+        endResponse(request, c);
     }
 
-    inline void wifiSet()
+    inline void wifiSet(REQUEST_T request)
     {
-        String body = server->arg("plain");
+        String body = request->arg("plain");
 
         if (countChar(body.c_str(), '\n') < 2)
         {
-            server->send(400);
+            request->send(400);
             return;
         }
 
@@ -238,7 +255,7 @@ namespace ESP_CONFIG_PAGE
                 }
                 else
                 {
-                    server->send(200);
+                    request->send(200);
                     addWifiNetwork(ssid, buf);
                     tryConnectWifi(true);
                     break;

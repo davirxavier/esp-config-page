@@ -7,23 +7,33 @@
 
 namespace ESP_CONFIG_PAGE
 {
-    inline void getFiles()
+    inline void getFiles(REQUEST_T request)
     {
-        String path = server->arg("plain");
+        String path = request->arg("plain");
         if (path.isEmpty())
         {
             path = "/";
         }
 
-        String ret;
+        ResponseContext c{};
+        initResponseContext(200, "text/plain", 0, c);
+        startResponse(request, c);
+
+        char numBuf[33]{};
 
 #ifdef ESP32
         File file = LittleFS.open(path);
         File nextFile;
         while (file.isDirectory() && (nextFile = file.openNextFile()))
         {
-            ret += String(nextFile.name()) + ":" + (nextFile.isDirectory() ? "true" : "false") + ":" + nextFile.
-                size() + ";";
+            writeResponse(nextFile.name(), c);
+            writeResponse(":", c);
+            writeResponse(nextFile.isDirectory() ? "true" : "false", c);
+            writeResponse(":", c);
+
+            ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", nextFile.size());
+            writeResponse(numBuf, c);
+            writeResponse(";", c);
 
             if (nextFile)
             {
@@ -35,51 +45,66 @@ namespace ESP_CONFIG_PAGE
 #elif ESP8266
         Dir dir = LittleFS.openDir(path);
         while (dir.next()) {
-            ret += dir.fileName() + ":" + (dir.isDirectory() ? "true" : "false") + ":" + dir.fileSize() + ";";
+            writeResponse(dir.fileName(), c);
+            writeResponse(":", c);
+            writeResponse(dir.isDirectory() ? "true" : "false", c);
+            writeResponse(":", c);
+            writeResponse(dir.fileSize(), c);
+            writeResponse(";", c);
         }
 #endif
 
-        server->send(200, "text/plain", ret);
+        endResponse(request, c);
     }
 
-    inline void downloadFile()
+    inline void downloadFile(REQUEST_T request)
     {
-        String path = server->arg("plain");
+        String path = request->arg("plain");
         if (path.isEmpty())
         {
-            server->send(404);
+            request->send(404);
             return;
         }
 
         if (!LittleFS.exists(path))
         {
-            server->send(404);
+            request->send(404);
             return;
         }
 
         File file = LittleFS.open(path, "r");
-        server->sendHeader("Content-Disposition", file.name());
-        server->streamFile(file, "text");
+        if (file.isDirectory())
+        {
+            file.close();
+            request->send(400);
+            return;
+        }
+
+        ResponseContext c{};
+        initResponseContext(200, "application/octet-stream", file.size(), c);
+        startResponse(request, c);
+        sendHeader("Content-Disposition", file.name(), c);
+        writeResponse(file, c);
         file.close();
     }
 
-    inline void deleteFile()
+    inline void deleteFile(REQUEST_T request)
     {
-        String path = server->arg("plain");
+        String path = request->arg("plain");
         if (path.isEmpty())
         {
-            server->send(404);
+            request->send(404);
             return;
         }
 
         if (!LittleFS.exists(path))
         {
-            server->send(404);
+            request->send(404);
             return;
         }
 
         LittleFS.remove(path);
-        server->send(200);
+        request->send(200);
     }
 
     inline void enableFilesModule()

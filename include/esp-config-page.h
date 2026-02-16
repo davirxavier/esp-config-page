@@ -8,6 +8,7 @@
 // #define ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
 // #define ESP32_CONP_OTA_USE_WEBSOCKETS
 // #define ESP_CONP_WS_BUFFER_SIZE 4096
+// #define ESP_CONP_ASYNC_WEBSERVER
 
 #if defined(ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA) && defined(ESP8266)
 #undef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
@@ -53,70 +54,99 @@
 
 namespace ESP_CONFIG_PAGE
 {
-    inline void getInfo()
+    inline void getInfo(REQUEST_T request)
     {
+        String mac = WiFi.macAddress();
+
+        size_t infoSize = 0;
+        infoSize += name.length() + 1;
+        infoSize += mac.length() + 1;
+
 #ifdef ESP32
-        String usedBytes = String(LittleFS.usedBytes());
-        String totalBytes = String(LittleFS.totalBytes());
+        infoSize += ESP_CONP_NUM_LEN("%zu", LittleFS.usedBytes()) + 1;
+        infoSize += ESP_CONP_NUM_LEN("%zu", LittleFS.totalBytes()) + 1;
 #elif ESP8266
         FSInfo fsInfo;
         LittleFS.info(fsInfo);
-        String usedBytes = String(fsInfo.usedBytes);
-        String totalBytes = String(fsInfo.totalBytes);
+        infoSize += ESP_CONP_NUM_LEN("%zu", fsInfo.usedBytes) + 1;
+        infoSize += ESP_CONP_NUM_LEN("%zu", fsInfo.totalBytes) + 1;
 #endif
-        String freeHeap = String(ESP.getFreeHeap());
-        String otaMaxLength = String(ESP_CONP_WS_BUFFER_SIZE-32);
-        String otaPort = String(ESP32_CONP_OTA_WS_PORT);
-        String loggingPort = String(ESP_CONP_LOGGING_PORT);
+        infoSize += ESP_CONP_NUM_LEN("%zu", ESP.getFreeHeap()) + 1;
 
-        int nameLen = name.length();
-        int infoSize = nameLen + WiFi.macAddress().length() + usedBytes.length() + totalBytes.length() +
-            freeHeap.length() + strlen(__DATE__) + strlen(__TIME__) + otaMaxLength.length() + otaPort.length() +
-            loggingPort.length() + 80;
+        const char *wifiStatus = WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP_STA ? "0" : "1";
+        infoSize += strlen(wifiStatus) + 1;
 
-        char buf[infoSize];
-
-        strcpy(buf, name.c_str());
-        strcat(buf, "+");
-        strcat(buf, WiFi.macAddress().c_str());
-        strcat(buf, "+");
-        strcat(buf, usedBytes.c_str());
-        strcat(buf, "+");
-        strcat(buf, totalBytes.c_str());
-        strcat(buf, "+");
-        strcat(buf, freeHeap.c_str());
-        strcat(buf, "+");
-
-        strcat(buf, WiFi.status() == WL_DISCONNECTED || WiFi.getMode() == WIFI_AP_STA ? "0" : "1");
-        strcat(buf, "+");
-
-        strcat(buf, __DATE__);
-        strcat(buf, " ");
-        strcat(buf, __TIME__);
-        strcat(buf, "+");
+        infoSize += strlen(__DATE__) + 1;
+        infoSize += strlen(__TIME__) + 1;
 
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
-        strcat(buf, "1+");
+        const char *otaWsStatus = "1+";
 #else
-        strcat(buf, "0+");
+        const char *otaWsStatus = "0+";
 #endif
+        infoSize += strlen(otaWsStatus);
 
-        strcat(buf, otaMaxLength.c_str());
-        strcat(buf, "+");
-        strcat(buf, otaPort.c_str());
-        strcat(buf, "+");
+        infoSize += ESP_CONP_NUM_LEN("%zu", ESP_CONP_WS_BUFFER_SIZE-32) + 1;
+        infoSize += ESP_CONP_NUM_LEN("%zu", ESP32_CONP_OTA_WS_PORT) + 1;
+        infoSize += ESP_CONP_NUM_LEN("%zu", ESP_CONP_LOGGING_PORT) + 1;
 
-        strcat(buf, loggingPort.c_str());
-        strcat(buf, "+");
+        char numBuf[33]{};
+        ResponseContext context{};
+        initResponseContext(200, "text/plain", infoSize, context);
 
-        ESP_CONFIG_PAGE::server->sendHeader("Authorization", ESP_CONFIG_PAGE::server->header("Authorization"));
-        ESP_CONFIG_PAGE::server->send(200, "text/plain", buf);
+        startResponse(request, context);
+        sendHeader("Authorization", request->header("Authorization").c_str(), context);
+
+        writeResponse(name.c_str(), context);
+        writeResponse("+", context);
+
+        writeResponse(WiFi.macAddress().c_str(), context);
+        writeResponse("+", context);
+
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", LittleFS.usedBytes());
+        writeResponse(numBuf, context);
+        writeResponse("+", context);
+
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", LittleFS.totalBytes());
+        writeResponse(numBuf, context);
+        writeResponse("+", context);
+
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", ESP.getFreeHeap());
+        writeResponse(numBuf, context);
+        writeResponse("+", context);
+
+        writeResponse(wifiStatus, context);
+        writeResponse("+", context);
+
+        writeResponse(__DATE__, context);
+        writeResponse(" ", context);
+        writeResponse(__TIME__, context);
+        writeResponse("+", context);
+
+        writeResponse(otaWsStatus, context);
+
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", ESP_CONP_WS_BUFFER_SIZE-32);
+        writeResponse(numBuf, context);
+        writeResponse("+", context);
+
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", ESP32_CONP_OTA_WS_PORT);
+        writeResponse(numBuf, context);
+        writeResponse("+", context);
+
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", ESP_CONP_LOGGING_PORT);
+        writeResponse(numBuf, context);
+        writeResponse("+", context);
+
+        endResponse(request, context);
     }
 
-    void getConfigPage()
+    inline void getConfigPage(REQUEST_T request)
     {
-        ESP_CONFIG_PAGE::server->sendHeader("Content-Encoding", "gzip");
-        ESP_CONFIG_PAGE::server->send_P(200, "text/html", (const char*) ESP_CONFIG_HTML, ESP_CONFIG_HTML_LEN);
+        ResponseContext c {.fullContent = ESP_CONFIG_HTML, .fullContentFromProgmem = true};
+        initResponseContext(200, "text/html", ESP_CONFIG_HTML_LEN, c);
+        startResponse(request, c);
+        sendHeader("Content-Encoding", "gzip", c);
+        endResponse(request, c);
     }
 
     /**
@@ -152,9 +182,14 @@ namespace ESP_CONFIG_PAGE
 
         addServerHandler((char*) F("/config"), HTTP_GET, getConfigPage);
         addServerHandler((char*) F("/config/info"), HTTP_GET, getInfo);
+
+#ifdef ESP_CONP_ASYNC_WEBSERVER
+        server->onNotFound([](REQUEST_T request)
+#else
         server->onNotFound([]()
+#endif
         {
-            ESP_CONFIG_PAGE::server->send(404, "text/html", F("<html><head><title>Page not found</title></head><body><p>Page not found.</p> <a href=\"/config\">Go to root.</a></body></html>"));
+            ESP_CONP_SEND_REQ(404, "text/html", F("<html><head><title>Page not found</title></head><body><p>Page not found.</p> <a href=\"/config\">Go to root.</a></body></html>"));
         });
 
         for (uint8_t i = 0; i < moduleCount; i++)

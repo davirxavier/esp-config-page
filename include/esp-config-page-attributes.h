@@ -248,7 +248,7 @@ namespace ESP_CONFIG_PAGE
         }
     }
 
-    inline void getAttributes()
+    inline void getAttributes(REQUEST_T request)
     {
         unsigned int size = 16;
         for (uint8_t i = 0; i < attributeCount; i++)
@@ -274,7 +274,7 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
-        server->send(200, "text/plain", buf);
+        request->send(200, "text/plain", buf);
     }
 
     inline void findAndSet(const char* key, const char* value)
@@ -290,9 +290,9 @@ namespace ESP_CONFIG_PAGE
         }
     }
 
-    inline void setAttribute()
+    inline void setAttribute(REQUEST_T request)
     {
-        String text = server->arg("plain");
+        String text = request->arg("plain");
 
         unsigned int maxLineLength = getMaxLineLength(text.c_str());
         char buf[maxLineLength];

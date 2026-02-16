@@ -14,17 +14,15 @@ namespace ESP_CONFIG_PAGE
     {
         /**
          * @param key - environment variable name and search key, should be unique between all environment variables.
-         */
-        EnvVar(const char *key)
-        {
-            EnvVar(key, nullptr);
-        };
-
-        /**
-         * @param key - environment variable name and search key, should be unique between all environment variables.
          * @param value - initial value for the environment variable.
          */
         EnvVar(const char *key, char *value) : key(key), value(value){}
+
+        /**
+         * @param key - environment variable name and search key, should be unique between all environment variables.
+         */
+        EnvVar(const char *key): key(key), value(nullptr){}
+
         const char *key;
         char *value;
     };
@@ -33,19 +31,6 @@ namespace ESP_CONFIG_PAGE
     uint8_t envVarCount = 0;
     uint8_t maxEnvVars = 0;
     KeyValueStorage* envVarStorage = nullptr;
-
-    inline int envSize()
-    {
-        int infoSize = 0;
-
-        for (uint8_t i = 0; i < envVarCount; i++)
-        {
-            EnvVar* ev = envVars[i];
-            infoSize += 6 + strlen(ev->key) + (ev->value != nullptr ? strlen(ev->value) : 0);
-        }
-
-        return infoSize;
-    }
 
     /**
      * Set the type persistent environment variables storage for the library, as well as use the instance to recover any saved variables (if there are any).
@@ -92,22 +77,22 @@ namespace ESP_CONFIG_PAGE
         {
             maxEnvVars = maxEnvVars == 0 ? 1 : ceil(maxEnvVars * 1.5);
             LOGF("Env var array overflow, increasing size to %d.\n", maxEnvVars);
-            envVars = (EnvVar**)realloc(envVars, sizeof(EnvVar*) * maxEnvVars);
+            envVars = (EnvVar**) realloc(envVars, sizeof(EnvVar*) * maxEnvVars);
         }
 
         envVars[envVarCount] = ev;
         envVarCount++;
     }
 
-    inline void saveEnv()
+    inline void saveEnv(REQUEST_T request) // TODO
     {
         if (envVarCount == 0)
         {
-            server->send(200);
+            request->send(200);
             return;
         }
 
-        String body = server->arg("plain");
+        String body = request->arg("plain");
 
         unsigned int maxLineLength = getMaxLineLength(body.c_str()) + 1;
         char buf[maxLineLength];
@@ -152,7 +137,7 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
-        server->send(200);
+        request->send(200);
         delay(200);
 
 #ifdef ESP32
@@ -162,10 +147,18 @@ namespace ESP_CONFIG_PAGE
 #endif
     }
 
-    inline void getEnv()
+    inline void getEnv(REQUEST_T request)
     {
-        char buf[envSize()+1];
-        buf[0] = 0;
+        int infoSize = 0;
+        for (uint8_t i = 0; i < envVarCount; i++)
+        {
+            EnvVar* ev = envVars[i];
+            infoSize += 2 + strlen(ev->key) + (ev->value != nullptr ? strlen(ev->value) : 0);
+        }
+
+        ResponseContext c{};
+        initResponseContext(200, "text/plain", infoSize, c);
+        startResponse(request, c);
 
         for (uint8_t i = 0; i < envVarCount; i++)
         {
@@ -176,18 +169,13 @@ namespace ESP_CONFIG_PAGE
                 continue;
             }
 
-            strcat(buf, ev->key);
-            strcat(buf, "\n");
-
-            if (ev->value != nullptr)
-            {
-                strcat(buf, ev->value);
-            }
-
-            strcat(buf, "\n");
+            writeResponse(ev->key, c);
+            writeResponse("\n", c);
+            writeResponse(ev->value != nullptr ? ev->value : "", c);
+            writeResponse("\n", c);
         }
 
-        server->send(200, "text/plain", buf);
+        endResponse(request, c);
     }
 
     inline void enableEnvModule()
