@@ -485,12 +485,18 @@
 
         const obj = {};
         arr.forEach(node => {
-            obj[node.id.split('input-', 2)[1]] = node.value;
+            const key = node.id.split('input-', 2)[1];
+            if (!key) {
+                return;
+            }
+
+            obj[key] = node.value;
         });
 
         if (window.confirm('Save environment variables?')) {
             let str = '';
-            Object.keys(obj).forEach(key => str += `${key}\n${obj[key]}\n`);
+            console.log(obj)
+            Object.keys(obj).filter(key => key).forEach(key => str += `${key}\n${obj[key]}\n`);
             doRequest('save', str, "POST", (success, res) => {
                 alert(success ? 'Environment saved successfully!' : `Error while saving: ${res}`);
                 location.reload();
@@ -672,9 +678,15 @@
     <!--END-MD5-->
 
     <!--MARKER-OTA-->
+    const otaTypes = {
+        MULTIPART: 0,
+        POST: 1,
+        WEBSOCKETS: 2,
+    };
+
     let otaPort = 80;
     let otaMaxLength = 1024;
-    let otaIsWs = false;
+    let otaType = 0; // 0 = multipart, 1 = plain post, 2 = websockets
     let lastConfirmedChunkOffset = 0;
     let otaCurrentChunkOffset = 0;
     let otaTimeout = 1000;
@@ -722,7 +734,7 @@
             }, 650);
         };
 
-        if (hasFile && otaIsWs) {
+        if (hasFile && otaType == otaTypes.WEBSOCKETS) {
             console.log("Starting WS OTA upload.");
             showOtaLoader();
 
@@ -845,7 +857,16 @@
                         }
                     };
 
-                    request.send(formData);
+                    if (otaType == otaTypes.POST) {
+                        if (md5) {
+                            request.setRequestHeader('x-md5', md5);
+                        }
+
+                        request.setRequestHeader('Content-Type', 'application/octet-stream');
+                        request.send(file);
+                    } else {
+                        request.send(formData);
+                    }
 
                     request.onreadystatechange = function () {
                         if (this.readyState !== 4) return;
@@ -915,7 +936,7 @@
                 document.getElementById('text-build').innerText = buildTime;
 
                 <!--MARKER-OTA-->
-                otaIsWs = split[7] == "1";
+                otaType = parseInt(split[7]) || 0;
                 otaMaxLength = parseInt(split[8]) || 1024;
                 otaPort = parseInt(split[9]) || 80;
                 <!--END-OTA-->
@@ -954,7 +975,7 @@
                     let key = keyValue.key;
                     const value = keyValue.value;
 
-                    if (!key || key === '') {
+                    if (!key || key === '' || key == undefined) {
                         continue;
                     }
 
@@ -984,35 +1005,50 @@
                     envCont.appendChild(mainElement);
                 }
 
+                if (document.getElementById('env-container').childElementCount === 0) {
+                    document.getElementById('env-div').style.display = 'none';
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No environment variables are defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
+
                 if (currentModule == moduleTypes.ENV_VARS) {
                     moduleTypes.ENV_VARS.onChange();
                 }
-
-                <!--MARKER-CA-->
-                doRequest('customa', undefined, 'GET', (success, response) => {
-                    const caCont = document.getElementById('custom-actions-div');
-                    caCont.innerHTML = '';
-
-                    const caSplit = response.split('\n');
-                    for (const ca of caSplit) {
-                        if (ca === '') {
-                            continue;
-                        }
-
-                        const button = document.createElement('button');
-                        button.classList.add('ca-btn');
-                        button.onclick = () => customAction(ca);
-                        button.innerText = ca;
-                        caCont.appendChild(button);
-                    }
-
-                    if (currentModule == moduleTypes.CUSTOM_ACTIONS) {
-                        moduleTypes.CUSTOM_ACTIONS.onChange();
-                    }
-                });
-                <!--END-CA-->
             });
             <!--END-ENV-->
+
+            <!--MARKER-CA-->
+            doRequest('customa', undefined, 'GET', (success, response) => {
+                const caCont = document.getElementById('custom-actions-div');
+                caCont.innerHTML = '';
+
+                const caSplit = response.split('\n');
+                for (const ca of caSplit) {
+                    if (ca === '') {
+                        continue;
+                    }
+
+                    const button = document.createElement('button');
+                    button.classList.add('ca-btn');
+                    button.onclick = () => customAction(ca);
+                    button.innerText = ca;
+                    caCont.appendChild(button);
+                }
+
+                if (document.getElementById('custom-actions-div').childElementCount === 0) {
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No actions defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
+
+                if (currentModule == moduleTypes.CUSTOM_ACTIONS) {
+                    moduleTypes.CUSTOM_ACTIONS.onChange();
+                }
+            });
+            <!--END-CA-->
         });
     }
 
@@ -1400,26 +1436,19 @@
         CUSTOM_ACTIONS: {
             name: 'Actions',
             title: 'TRIGGER ACTIONS',
-            onChange: () => {
-                if (document.getElementById('custom-actions-div').childElementCount === 0) {
-                    messageModule.style.removeProperty('display');
-                    messageModule.innerText = 'No actions defined.';
-                } else {
-                    messageModule.style.display = 'none';
-                }
-            },
+            onChange: () => {},
         },
         ENV_VARS: {
             name: 'Environment',
             title: 'CONFIGURE ENVIRONMENT VARIABLES',
             onChange: () => {
-                if (document.getElementById('env-container').childElementCount === 0) {
-                    document.getElementById('env-div').style.display = 'none';
-                    messageModule.style.removeProperty('display');
-                    messageModule.innerText = 'No environment variables are defined.';
-                } else {
-                    messageModule.style.display = 'none';
-                }
+                // if (document.getElementById('env-container').childElementCount === 0) {
+                //     document.getElementById('env-div').style.display = 'none';
+                //     messageModule.style.removeProperty('display');
+                //     messageModule.innerText = 'No environment variables are defined.';
+                // } else {
+                //     messageModule.style.display = 'none';
+                // }
             }
         },
         LOGGING: {

@@ -1,4 +1,4 @@
-import minify_html
+import minify_html # pip install minify-html
 import gzip
 import re
 import argparse
