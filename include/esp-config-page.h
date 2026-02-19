@@ -5,18 +5,58 @@
 #ifndef DX_ESP_CONFIG_PAGE_H
 #define DX_ESP_CONFIG_PAGE_H
 
-// #define ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
-// #define ESP32_CONP_OTA_USE_WEBSOCKETS
-// #define ESP_CONP_WS_BUFFER_SIZE 4096
+/*
+ * Use the macros below to configure your server.
+ * Copy the desired macro to your main file and define it before including this header.
+ */
+
+// =====================================================
+// WEBSERVER SETTINGS
+// =====================================================
+
 // #define ESP_CONP_ASYNC_WEBSERVER
 // #define ESP_CONP_HTTPS_SERVER
 
+// Expedition date for the embedded generated certificate. Make this more recent, if you're using this some decades in the future still
+#ifndef ESP_CONP_CERT_START_DATE
+#define ESP_CONP_CERT_START_DATE "20260101000000"
+#endif
+
+// Expiration date for the embedded generated certificate. Update it to a future date, if you're using this after 30 years still
+#ifndef ESP_CONP_CERT_END_DATE
+#define ESP_CONP_CERT_END_DATE "20560101000000"
+#endif
+
+// Folder where the generated certificate and key files will be stored for the HTTPS server on LittleFS.
+#ifndef ESP_CONP_CERT_FOLDER
+#define ESP_CONP_CERT_FOLDER "/esp_conp_cert_storage"
+#endif
+
+// Max size for all environment variables, you can increase this if needed.
 #ifndef ESP_CONP_MAX_ENV_LENGTH
 #define ESP_CONP_MAX_ENV_LENGTH 8192
 #endif
 
-#if defined(ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA) && defined(ESP8266)
-#undef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+// =====================================================
+// OTA SETTINGS
+// =====================================================
+
+// Use the ESP-IDF framework to perform the OTA update. Enabling this works better if using Arduino as an IDF component.
+// #define ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
+
+// Use WebSockets to deliver the OTA update. Better for unstable networks, as it will not cancel the update if there's network instability.
+// #define ESP32_CONP_OTA_USE_WEBSOCKETS
+
+// #define ESP_CONP_WS_BUFFER_SIZE 4096
+
+// Port for the OTA WebSockets server. Change if you need to use this port.
+#ifndef ESP32_CONP_OTA_WS_PORT
+#define ESP32_CONP_OTA_WS_PORT 9000
+#endif
+
+// Port for the Logging WebSockets server. Change if you need to use this port.
+#ifndef ESP_CONP_LOGGING_PORT
+#define ESP_CONP_LOGGING_PORT 4000
 #endif
 
 #ifndef ESP_CONP_WS_BUFFER_SIZE
@@ -31,12 +71,8 @@
 #error "WebSocket buffer size too small!"
 #endif
 
-#ifndef ESP32_CONP_OTA_WS_PORT
-#define ESP32_CONP_OTA_WS_PORT 9000
-#endif
-
-#ifndef ESP_CONP_LOGGING_PORT
-#define ESP_CONP_LOGGING_PORT 4000
+#if defined(ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA) && defined(ESP8266)
+#undef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
 #endif
 
 #include <Arduino.h>

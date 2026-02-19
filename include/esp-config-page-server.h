@@ -94,7 +94,7 @@ namespace ESP_CONFIG_PAGE
 #ifdef ESP_CONP_HTTPS_SERVER
     inline void setupServerConfig(httpd_ssl_config *sslConfig)
     {
-        ESP_CONFIG_PAGE::LittleFSKeyValueStorage storage("/esp_conp_certs");
+        ESP_CONFIG_PAGE::LittleFSKeyValueStorage storage(ESP_CONP_CERT_FOLDER);
         ESP_CONFIG_PAGE_CERT::initModule(&storage);
 
         sslConfig->prvtkey_pem = (uint8_t*) ESP_CONFIG_PAGE_CERT::keyBuffer;

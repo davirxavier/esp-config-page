@@ -12,20 +12,15 @@
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/entropy.h"
 
-#ifndef ESP_CONP_CERT_STORAGE_CERT
-#define ESP_CONP_CERT_STORAGE_CERT "conp_cert"
-#endif
-
-#ifndef ESP_CONP_CERT_STORAGE_KEY
-#define ESP_CONP_CERT_STORAGE_KEY "conp_key"
-#endif
-
 namespace ESP_CONFIG_PAGE_CERT
 {
     inline size_t certLen = 0;
     inline size_t keyLen = 0;
     inline char certBuffer[1024]{};
     inline char keyBuffer[512]{};
+
+    inline char certName[] = "cert";
+    inline char keyName[] = "key";
 
     inline void logError(const char* name, int res)
     {
@@ -84,7 +79,7 @@ namespace ESP_CONFIG_PAGE_CERT
         serialBuf[0] &= 0x7F;
         logError("certificate serial definition",
                  mbedtls_x509write_crt_set_serial_raw(&crt, serialBuf, sizeof(serialBuf)));
-        logError("certificate validity", mbedtls_x509write_crt_set_validity(&crt, "20260101000000", "20560101000000"));
+        logError("certificate validity", mbedtls_x509write_crt_set_validity(&crt, ESP_CONP_CERT_START_DATE, ESP_CONP_CERT_END_DATE));
         // TODO add regeneration when expired
 
         // write
@@ -92,7 +87,7 @@ namespace ESP_CONFIG_PAGE_CERT
                                             mbedtls_ctr_drbg_random, &ctr_drbg);
         if (res == 0)
         {
-            storage->save(ESP_CONP_CERT_STORAGE_CERT, certBuffer);
+            storage->save(certName, certBuffer);
             certLen = strlen(certBuffer);
             LOGN("Certificate generated and saved successfully.");
         }
@@ -104,7 +99,7 @@ namespace ESP_CONFIG_PAGE_CERT
         res = mbedtls_pk_write_key_pem(&key, (unsigned char*)keyBuffer, sizeof(keyBuffer));
         if (res == 0)
         {
-            storage->save(ESP_CONP_CERT_STORAGE_KEY, (const char*)keyBuffer);
+            storage->save(keyName, (const char*)keyBuffer);
             keyLen = strlen(keyBuffer);
             LOGN("Key generated and saved successfully.");
         }
@@ -158,10 +153,10 @@ namespace ESP_CONFIG_PAGE_CERT
             return;
         }
 
-        if (storage->exists(ESP_CONP_CERT_STORAGE_KEY) && storage->exists(ESP_CONP_CERT_STORAGE_CERT))
+        if (storage->exists(keyName) && storage->exists(certName))
         {
-            storage->recover(ESP_CONP_CERT_STORAGE_KEY, keyBuffer, sizeof(keyBuffer));
-            storage->recover(ESP_CONP_CERT_STORAGE_CERT, certBuffer, sizeof(certBuffer));
+            storage->recover(keyName, keyBuffer, sizeof(keyBuffer));
+            storage->recover(certName, certBuffer, sizeof(certBuffer));
 
             keyLen = strlen(keyBuffer);
             certLen = strlen(certBuffer);
