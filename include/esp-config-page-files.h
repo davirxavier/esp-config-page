@@ -7,22 +7,33 @@
 
 namespace ESP_CONFIG_PAGE
 {
+    inline void checkPathEmpty(char *pathBuf)
+    {
+        if (pathBuf[0] == 0)
+        {
+            pathBuf[0] = '/';
+            pathBuf[1] = 0;
+        }
+    }
+
     inline void getFiles(REQUEST_T request)
     {
-        String path = request->arg("plain");
-        if (path.isEmpty())
+        char pathBuf[256]{};
+        if (getBodyAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
         {
-            path = "/";
+            return;
         }
 
+        checkPathEmpty(pathBuf);
+
         ResponseContext c{};
-        initResponseContext(200, "text/plain", 0, c);
+        initResponseContext(CONP_STATUS_CODE::OK, "text/plain", 0, c);
         startResponse(request, c);
 
         char numBuf[33]{};
 
 #ifdef ESP32
-        File file = LittleFS.open(path);
+        File file = LittleFS.open(pathBuf);
         File nextFile;
         while (file.isDirectory() && (nextFile = file.openNextFile()))
         {
@@ -59,29 +70,28 @@ namespace ESP_CONFIG_PAGE
 
     inline void downloadFile(REQUEST_T request)
     {
-        String path = request->arg("plain");
-        if (path.isEmpty())
+        char pathBuf[256]{};
+        if (getBodyAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
         {
-            request->send(404);
             return;
         }
 
-        if (!LittleFS.exists(path))
+        if (pathBuf[0] == 0 || !LittleFS.exists(pathBuf))
         {
-            request->send(404);
+            sendInstantResponse(CONP_STATUS_CODE::NOT_FOUND, "file not found", request);
             return;
         }
 
-        File file = LittleFS.open(path, "r");
+        File file = LittleFS.open(pathBuf, "r");
         if (file.isDirectory())
         {
             file.close();
-            request->send(400);
+            sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, "can't download folder", request);
             return;
         }
 
         ResponseContext c{};
-        initResponseContext(200, "application/octet-stream", file.size(), c);
+        initResponseContext(CONP_STATUS_CODE::OK, "application/octet-stream", file.size(), c);
         startResponse(request, c);
         sendHeader("Content-Disposition", file.name(), c);
         writeResponse(file, c);
@@ -90,21 +100,20 @@ namespace ESP_CONFIG_PAGE
 
     inline void deleteFile(REQUEST_T request)
     {
-        String path = request->arg("plain");
-        if (path.isEmpty())
+        char pathBuf[256]{};
+        if (getBodyAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
         {
-            request->send(404);
             return;
         }
 
-        if (!LittleFS.exists(path))
+        if (pathBuf[0] == 0 || !LittleFS.exists(pathBuf))
         {
-            request->send(404);
+            sendInstantResponse(CONP_STATUS_CODE::NOT_FOUND, "file not found", request);
             return;
         }
 
-        LittleFS.remove(path);
-        request->send(200);
+        LittleFS.remove(pathBuf);
+        sendInstantResponse(CONP_STATUS_CODE::OK, "", request);
     }
 
     inline void enableFilesModule()
@@ -126,9 +135,9 @@ namespace ESP_CONFIG_PAGE
         LittleFS.begin();
 #endif
 
-        addServerHandler((char*) F("/config/files"), HTTP_POST, getFiles);
-        addServerHandler((char*) F("/config/files/download"), HTTP_POST, downloadFile);
-        addServerHandler((char*) F("/config/files/delete"), HTTP_POST, deleteFile);
+        addServerHandler("/config/files", HTTP_POST, getFiles);
+        addServerHandler("/config/files/download", HTTP_POST, downloadFile);
+        addServerHandler("/config/files/delete", HTTP_POST, deleteFile);
     }
 }
 

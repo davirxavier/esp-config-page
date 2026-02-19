@@ -150,7 +150,7 @@ namespace ESP_CONFIG_PAGE
         int count = WiFi.scanNetworks();
         if (count < 0)
         {
-            request->send(500, "text/plain", "Error while searching networks.");
+            sendInstantResponse(CONP_STATUS_CODE::INTERNAL_SERVER_ERROR, "Error while searching networks.", request);
             return;
         }
 
@@ -199,7 +199,7 @@ namespace ESP_CONFIG_PAGE
         char numBuf[33]{};
 
         ResponseContext c{};
-        initResponseContext(200, "text/plain", infoSize, c);
+        initResponseContext(CONP_STATUS_CODE::OK, "text/plain", infoSize, c);
         startResponse(request, c);
 
         writeResponse(ssid.c_str(), c);
@@ -227,11 +227,15 @@ namespace ESP_CONFIG_PAGE
 
     inline void wifiSet(REQUEST_T request)
     {
-        String body = request->arg("plain");
-
-        if (countChar(body.c_str(), '\n') < 2)
+        char bodyBuf[128]{};
+        if (getBodyAndValidateMaxSize(request, bodyBuf, sizeof(bodyBuf)))
         {
-            request->send(400);
+            return;
+        }
+
+        if (countChar(bodyBuf, '\n') < 2)
+        {
+            sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, "invalid request", request);
             return;
         }
 
@@ -239,10 +243,11 @@ namespace ESP_CONFIG_PAGE
         char ssid[ESP_CONP_SSID_LEN]{};
         unsigned int currentChar = 0;
         bool isSsid = true;
+        size_t bodyLen = strlen(bodyBuf);
 
-        for (unsigned int i = 0; i < body.length(); i++)
+        for (size_t i = 0; i < bodyLen; i++)
         {
-            char c = body[i];
+            char c = bodyBuf[i];
 
             if (c == '\n')
             {
@@ -255,10 +260,10 @@ namespace ESP_CONFIG_PAGE
                 }
                 else
                 {
-                    request->send(200);
+                    sendInstantResponse(CONP_STATUS_CODE::OK, "", request);
                     addWifiNetwork(ssid, buf);
                     tryConnectWifi(true);
-                    break;
+                    return;
                 }
 
                 currentChar = 0;
@@ -269,6 +274,8 @@ namespace ESP_CONFIG_PAGE
                 currentChar++;
             }
         }
+
+        sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, "invalid request", request);
     }
 
     inline void enableWirelessModule()
@@ -278,8 +285,8 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
-        addServerHandler((char*) F("/config/wifi"), HTTP_GET, wifiGet);
-        addServerHandler((char*) F("/config/wifi"), HTTP_POST, wifiSet);
+        addServerHandler("/config/wifi", HTTP_GET, wifiGet);
+        addServerHandler("/config/wifi", HTTP_POST, wifiSet);
         connectionTimeoutCounter = millis() - connectionTimeoutMs;
         setWifiStorage(new ESP_CONFIG_PAGE::LittleFSKeyValueStorage("/esp-conp-saved-networks"));
         WiFi.persistent(false);

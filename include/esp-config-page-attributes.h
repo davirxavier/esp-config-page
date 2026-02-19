@@ -274,7 +274,7 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
-        request->send(200, "text/plain", buf);
+        sendInstantResponse(CONP_STATUS_CODE::OK, buf, request);
     }
 
     inline void findAndSet(const char* key, const char* value)
@@ -292,18 +292,23 @@ namespace ESP_CONFIG_PAGE
 
     inline void setAttribute(REQUEST_T request)
     {
-        String text = request->arg("plain");
+        char bodyBuf[128];
+        if (getBodyAndValidateMaxSize(request, bodyBuf, sizeof(bodyBuf)))
+        {
+            return;
+        }
 
-        unsigned int maxLineLength = getMaxLineLength(text.c_str());
+        unsigned int maxLineLength = getMaxLineLength(bodyBuf);
         char buf[maxLineLength];
 
         bool keySet = false;
         char *key = nullptr;
 
         unsigned int currentChar = 0;
-        for (unsigned int i = 0; i < text.length(); i++)
+        size_t bodyLen = strlen(bodyBuf);
+        for (unsigned int i = 0; i < bodyLen; i++)
         {
-            const char c = text[i];
+            const char c = bodyBuf[i];
             if (c == '\n')
             {
                 buf[currentChar] = 0;
@@ -335,8 +340,8 @@ namespace ESP_CONFIG_PAGE
 
     inline void enableAttributesModule()
     {
-        addServerHandler((char*) "/config/attributes", HTTP_GET, getAttributes);
-        addServerHandler((char*) "/config/attributes", HTTP_POST, setAttribute);
+        addServerHandler("/config/attributes", HTTP_GET, getAttributes);
+        addServerHandler("/config/attributes", HTTP_POST, setAttribute);
     }
 }
 

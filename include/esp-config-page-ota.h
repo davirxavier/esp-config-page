@@ -203,7 +203,7 @@ namespace ESP_CONFIG_PAGE
         snprintf(toSend, sizeof(toSend), "%c%s", eventType, status);
         otaWsServer.sendTXT(otaClient->id, toSend);
 #else
-        currentRequest->send(200, "text/plain", status);
+        sendInstantResponse(CONP_STATUS_CODE::OK, status, currentRequest);
 #endif
     }
 
@@ -216,7 +216,7 @@ namespace ESP_CONFIG_PAGE
         otaWsServer.sendTXT(otaClient->id, toSend);
         releaseOtaClient();
 #else
-        currentRequest->send(400, "text/plain", toSend);
+        sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, toSend, currentRequest);
 #endif
 
         otaAbort();
@@ -439,7 +439,7 @@ namespace ESP_CONFIG_PAGE
         UPLOAD_ABORT,
     };
 
-#ifndef ESP32_CONP_OTA_USE_WEBSOCKETS
+#if !defined(ESP32_CONP_OTA_USE_WEBSOCKETS)
     inline void handleUpdate(bool filesystem, REQUEST_T request, uint8_t *data, size_t len, UploadEventType event, bool writeOnStart = false)
     {
         isOtaFilesystem = filesystem;
@@ -447,10 +447,11 @@ namespace ESP_CONFIG_PAGE
 
         if (event == UPLOAD_START)
         {
-            String md5 = request->arg("md5");
+            char md5[33]{};
+            getHeader(request, "x-md5", md5, sizeof(md5));
             currentRequest = request;
             otaStarted = true;
-            otaStart(md5.isEmpty() ? nullptr : md5.c_str());
+            otaStart(strlen(md5) != 32 ? nullptr : md5);
         }
 
         if ((event == UPLOAD_WRITE || (writeOnStart && event == UPLOAD_START)) && len > 0)
@@ -500,6 +501,39 @@ namespace ESP_CONFIG_PAGE
         return UPLOAD_ABORT;
     }
 #endif
+
+#ifdef ESP_CONP_HTTPS_SERVER
+    inline void handleRequest(REQUEST_T request, bool filesystem)
+    {
+        size_t bufferSize = 1024 * 16;
+        int tries = 0;
+        char *buffer = nullptr;
+        while (buffer == nullptr && tries < 8)
+        {
+            buffer = (char*) malloc(bufferSize/2);
+            delay(200);
+            tries++;
+        }
+
+        if (buffer == nullptr)
+        {
+            sendInstantResponse(CONP_STATUS_CODE::INTERNAL_SERVER_ERROR, "could not acquire buffer", request);
+            return;
+        }
+
+        handleUpdate(filesystem, request, {}, 0, UPLOAD_START);
+
+        size_t received = 0;
+        while ((received = httpd_req_recv(request, buffer, bufferSize)) > 0)
+        {
+            handleUpdate(filesystem, request, (uint8_t*) buffer, received, UPLOAD_WRITE);
+        }
+
+        free(buffer);
+        handleUpdate(filesystem, request, {}, 0, UPLOAD_END);
+    }
+#endif
+
 #endif
 
     inline void enableOtaModule()
@@ -656,6 +690,12 @@ namespace ESP_CONFIG_PAGE
                 VALIDATE_AUTH(request);
                 handleUpdate(true, request, data, len, mapValuesToUploadEvent(index), true);
             });
+#elifdef ESP_CONP_HTTPS_SERVER
+        addServerHandler(firmwareUri, HTTP_POST, [](REQUEST_T req)
+        {
+            handleRequest(req, false);
+        });
+        // TODO
 #else
         server->on(firmwareUri,
             HTTP_POST,

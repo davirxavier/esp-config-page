@@ -21,13 +21,12 @@ namespace ESP_CONFIG_PAGE
 
     inline void triggerCustomAction(REQUEST_T request) // TODO
     {
-        if (customActionsCount == 0)
+        CustomAction* ca = nullptr;
+        char body[128]{};
+        if (getBodyAndValidateMaxSize(request, body, sizeof(body)))
         {
             return;
         }
-
-        CustomAction* ca = nullptr;
-        String body = request->arg(F("plain"));
 
         for (uint8_t i = 0; i < customActionsCount; i++)
         {
@@ -37,16 +36,19 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
+        CONP_STATUS_CODE::HTTPStatusCode status;
         if (ca != nullptr)
         {
             LOGF("Triggering custom action: %s\n", ca->key);
             ca->handler(request);
-            request->send(200);
+            status = CONP_STATUS_CODE::OK;
         }
         else
         {
-            request->send(404);
+            status = CONP_STATUS_CODE::NOT_FOUND;
         }
+
+        sendInstantResponse(status, "", request);
     }
 
     /**
@@ -79,7 +81,7 @@ namespace ESP_CONFIG_PAGE
         }
 
         ResponseContext c{};
-        initResponseContext(200, "text/plain", infoSize, c);
+        initResponseContext(CONP_STATUS_CODE::OK, "text/plain", infoSize, c);
         startResponse(request, c);
 
         for (uint8_t i = 0; i < customActionsCount; i++)

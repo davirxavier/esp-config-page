@@ -1,17 +1,6 @@
 #ifndef ESP_CONFIG_PAGE_DEFINES
 #define ESP_CONFIG_PAGE_DEFINES
 
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-#include "ESPAsyncWebServer.h"
-#else
-#ifdef ESP32
-#include "WebServer.h"
-#include "Update.h"
-#elif ESP8266
-#include "ESP8266WebServer.h"
-#endif
-#endif
-
 #include "LittleFS.h"
 
 #ifdef ESP_CONFIG_PAGE_ENABLE_LOGGING
@@ -25,7 +14,6 @@
 #define LOGF(str, p...)
 #endif
 
-#define VALIDATE_AUTH(r) if (!ESP_CONFIG_PAGE::validateAuth(r)) return
 #define ESP_CONP_WRITE_NUMBUF(b, f, n) snprintf(b, sizeof(b), f, n)
 #define ESP_CONP_NUM_LEN(f, n) snprintf(nullptr, 0, f, n)
 
@@ -38,40 +26,9 @@
 
 namespace ESP_CONFIG_PAGE
 {
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-    using WEBSERVER_T = AsyncWebServer;
-    using METHOD_T = WebRequestMethodComposite;
-    using REQUEST_T = AsyncWebServerRequest*;
-#else
-#ifdef ESP32
-    using WEBSERVER_T = WebServer;
-#elif ESP8266
-    using WEBSERVER_T = ESP8266WebServer;
-#endif
-    using METHOD_T = HTTPMethod;
-    using REQUEST_T = WEBSERVER_T*;
-#endif
-
-    WEBSERVER_T *server;
     String username;
     String password;
     String nodeName;
-
-    struct ResponseContext
-    {
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-        AsyncWebServerResponse *response = nullptr;
-#else
-        WiFiClient client;
-        bool firstResponseWritten = false;
-#endif
-        const uint8_t *fullContent = nullptr; // Set content here when streamResponse = false
-        bool fullContentFromProgmem = false;
-
-        int status = 0;
-        char contentType[33]{};
-        size_t length = 0;
-    };
 
     inline unsigned int getMaxLineLength(const char* str) {
         unsigned int maxLength = 0;
@@ -103,187 +60,7 @@ namespace ESP_CONFIG_PAGE
         return maxLength;
     }
 
-    inline bool validateAuth(REQUEST_T request)
-    {
-        if (!request->authenticate(username.c_str(), password.c_str()))
-        {
-            delay(1000);
-            request->requestAuthentication();
-            return false;
-        }
-
-        return true;
-    }
-
     Stream* serial = &Serial;
-
-    inline void addServerHandler(const char *uri, METHOD_T method, std::function<void(REQUEST_T)> fn)
-    {
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-        server->on(AsyncURIMatcher::exact(uri), method, [uri, method, fn](REQUEST_T req)
-        {
-            VALIDATE_AUTH(req);
-            LOGF("Received request: %s - %d.\n", uri, method);
-            fn(req);
-        });
-#else
-        server->on(uri, method, [uri, method, fn]()
-        {
-            VALIDATE_AUTH(server);
-            LOGF("Received request: %s - %d.\n", uri, method);
-            fn(server);
-        });
-#endif
-    }
-
-    /**
-     * @param fullContent Set to the desired content to send all at once.
-     */
-    inline void initResponseContext(int status,
-                                    const char *contentType,
-                                    size_t length,
-                                    ResponseContext &c)
-    {
-        c.status = status;
-        c.length = length;
-        snprintf(c.contentType, sizeof(c.contentType), "%s", contentType);
-    }
-
-    inline bool startResponse(REQUEST_T request, ResponseContext &c)
-    {
-        LOGF("Started response with length %zu\n", c.length);
-
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-        if (c.fullContent == nullptr)
-        {
-            c.response = request->beginResponseStream(c.contentType, c.length + 64);
-            c.response->setCode(c.status);
-        }
-        else
-        {
-            c.response = request->beginResponse(c.status, c.contentType, c.fullContent, c.length);
-        }
-#else
-        c.client = request->client();
-
-        c.client.print(F("HTTP/1.1 "));
-        c.client.print(c.status);
-        c.client.print(c.status >= 200 && c.status < 300 ? F(" OK") : F(" ERR"));
-        c.client.print(F("\r\nCache-Control: no-cache\r\nConnection: close\r\nContent-Type: "));
-        c.client.print(c.contentType);
-        c.client.print(F("\r\n"));
-
-        if (c.length > 0)
-        {
-            c.client.print(F("Content-Length: "));
-            c.client.print(c.length);
-            c.client.print("\r\n");
-        }
-#endif
-
-        return true;
-    }
-
-    inline void sendHeader(const char *name, const char *val, ResponseContext &c)
-    {
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-        if (c.response == nullptr)
-        {
-            return;
-        }
-
-        c.response->addHeader(name, val);
-#else
-        if (!c.client.connected())
-        {
-            LOGN("Tried to send header but client is disconnected.");
-            return;
-        }
-
-        c.client.print(name);
-        c.client.print(F(": "));
-        c.client.print(val);
-        c.client.print(F("\r\n"));
-#endif
-    }
-
-    inline void writeResponse(const uint8_t *content, size_t len, ResponseContext &c)
-    {
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-        if (c.response == nullptr || c.fullContent != nullptr)
-        {
-            return;
-        }
-
-        auto stream = static_cast<AsyncResponseStream*>(c.response);
-        stream->write(content, len);
-#else
-        if (c.fullContent != nullptr)
-        {
-            return;
-        }
-
-        if (!c.client.connected())
-        {
-            LOGN("Tried to write to response but client is disconnected.");
-            return;
-        }
-
-        if (!c.firstResponseWritten)
-        {
-            c.client.print(F("\r\n"));
-            c.firstResponseWritten = true;
-        }
-
-        c.client.write(content, len);
-#endif
-    }
-
-    inline void writeResponse(const char *content, ResponseContext &c)
-    {
-        writeResponse((const uint8_t*) content, strlen(content), c);
-    }
-
-    inline size_t writeResponse(Stream &stream, ResponseContext &c)
-    {
-        size_t total = 0;
-        uint8_t buf[256];
-        while (stream.available())
-        {
-            size_t read = stream.readBytes(buf, sizeof(buf));
-            writeResponse(buf, read, c);
-            total += read;
-        }
-        return total;
-    }
-
-    inline void endResponse(REQUEST_T request, ResponseContext &c)
-    {
-#ifdef ESP_CONP_ASYNC_WEBSERVER
-        request->send(c.response);
-#else
-        if (!c.client.connected())
-        {
-            return;
-        }
-
-        if (!c.firstResponseWritten)
-        {
-            c.client.print("\r\n");
-        }
-
-        if (c.fullContent != nullptr && c.fullContentFromProgmem)
-        {
-            c.client.write_P((PGM_P) c.fullContent, c.length);
-        }
-        else if (c.fullContent != nullptr)
-        {
-            c.client.write(c.fullContent, c.length);
-        }
-
-        c.client.stop();
-#endif
-    }
 
     String name;
     const char escapeChars[] = {':', ';', '+', '\0'};

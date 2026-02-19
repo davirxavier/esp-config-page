@@ -9,6 +9,11 @@
 // #define ESP32_CONP_OTA_USE_WEBSOCKETS
 // #define ESP_CONP_WS_BUFFER_SIZE 4096
 // #define ESP_CONP_ASYNC_WEBSERVER
+// #define ESP_CONP_HTTPS_SERVER
+
+#ifndef ESP_CONP_MAX_ENV_LENGTH
+#define ESP_CONP_MAX_ENV_LENGTH 8192
+#endif
 
 #if defined(ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA) && defined(ESP8266)
 #undef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
@@ -42,6 +47,7 @@
 #include <WebSocketsServer.h>
 #include <esp-config-page-logging.h>
 #include <esp-config-defines.h>
+#include <esp-config-page-server.h>
 #include <esp-config-page-ca.h>
 #include <esp-config-page-env.h>
 #include <esp-config-page-files.h>
@@ -80,6 +86,8 @@ namespace ESP_CONFIG_PAGE
         infoSize += strlen(__TIME__) + 1;
 
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        const char *otaWsStatus = "2+";
+#elifdef ESP_CONP_HTTPS_SERVER
         const char *otaWsStatus = "1+";
 #else
         const char *otaWsStatus = "0+";
@@ -92,10 +100,15 @@ namespace ESP_CONFIG_PAGE
 
         char numBuf[33]{};
         ResponseContext context{};
-        initResponseContext(200, "text/plain", infoSize, context);
+        initResponseContext(CONP_STATUS_CODE::OK, "text/plain", infoSize, context);
 
         startResponse(request, context);
-        sendHeader("Authorization", request->header("Authorization").c_str(), context);
+
+        { // Inner scope so we don't take too much stack, for the code after
+            char headerBuf[256]{};
+            getHeader(request, "Authorization", headerBuf, sizeof(headerBuf));
+            sendHeader("Authorization", headerBuf, context);
+        }
 
         writeResponse(name.c_str(), context);
         writeResponse("+", context);
@@ -143,7 +156,7 @@ namespace ESP_CONFIG_PAGE
     inline void getConfigPage(REQUEST_T request)
     {
         ResponseContext c {.fullContent = ESP_CONFIG_HTML, .fullContentFromProgmem = true};
-        initResponseContext(200, "text/html", ESP_CONFIG_HTML_LEN, c);
+        initResponseContext(CONP_STATUS_CODE::OK, "text/html", ESP_CONFIG_HTML_LEN, c);
         startResponse(request, c);
         sendHeader("Content-Encoding", "gzip", c);
         endResponse(request, c);
@@ -154,7 +167,7 @@ namespace ESP_CONFIG_PAGE
      *
      * @param modules - Array of modules to enable
      * @param moduleCount - Number of modules in array
-     * @param server - Webserver instance to use.
+     * @param server - Webserver instance to use. Set to NULL if using the HTTPS server.
      * @param username - Page authentication username
      * @param password - Page authentication password
      * @param nodeName - Name of this node to show in the webpage
@@ -180,9 +193,10 @@ namespace ESP_CONFIG_PAGE
 
         name = nodeName;
 
-        addServerHandler((char*) F("/config"), HTTP_GET, getConfigPage);
-        addServerHandler((char*) F("/config/info"), HTTP_GET, getInfo);
+        addServerHandler("/config", HTTP_GET, getConfigPage);
+        addServerHandler("/config/info", HTTP_GET, getInfo);
 
+#ifndef ESP_CONP_HTTPS_SERVER
 #ifdef ESP_CONP_ASYNC_WEBSERVER
         server->onNotFound([](REQUEST_T request)
 #else
@@ -191,6 +205,7 @@ namespace ESP_CONFIG_PAGE
         {
             ESP_CONP_SEND_REQ(404, "text/html", F("<html><head><title>Page not found</title></head><body><p>Page not found.</p> <a href=\"/config\">Go to root.</a></body></html>"));
         });
+#endif
 
         for (uint8_t i = 0; i < moduleCount; i++)
         {

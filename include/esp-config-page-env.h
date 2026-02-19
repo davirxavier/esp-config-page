@@ -7,6 +7,7 @@
 
 #include "LittleFS.h"
 #include "esp-config-defines.h"
+#include "esp-config-page-ota.h"
 
 namespace ESP_CONFIG_PAGE
 {
@@ -88,23 +89,36 @@ namespace ESP_CONFIG_PAGE
     {
         if (envVarCount == 0)
         {
-            request->send(200);
+            sendInstantResponse(CONP_STATUS_CODE::OK, "", request);
             return;
         }
 
-        String body = request->arg("plain");
+        size_t requestBodyLen = getBodyLen(request);
+        if (requestBodyLen > ESP_CONP_MAX_ENV_LENGTH)
+        {
+            sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, "Body too big.", request);
+            return;
+        }
 
-        unsigned int maxLineLength = getMaxLineLength(body.c_str()) + 1;
+        auto bodyBuffer = (char*) malloc(requestBodyLen+1);
+        if (bodyBuffer == nullptr)
+        {
+            sendInstantResponse(CONP_STATUS_CODE::INTERNAL_SERVER_ERROR, "Body buffer allocation failure.", request);
+            return;
+        }
+
+        getBody(request, bodyBuffer, requestBodyLen+1);
+        unsigned int maxLineLength = getMaxLineLength(bodyBuffer) + 1;
         char buf[maxLineLength];
         unsigned int currentChar = 0;
-        unsigned int bodyLen = body.length();
+        unsigned int bodyLen = strlen(bodyBuffer);
 
         char currentKey[maxLineLength];
         bool isKey = true;
 
         for (unsigned int i = 0; i < bodyLen; i++)
         {
-            char c = body[i];
+            char c = bodyBuffer[i];
 
             if (c == '\n')
             {
@@ -137,14 +151,8 @@ namespace ESP_CONFIG_PAGE
             }
         }
 
-        request->send(200);
-        delay(200);
-
-#ifdef ESP32
-        ESP.restart();
-#elif ESP8266
-        ESP.reset();
-#endif
+        sendInstantResponse(CONP_STATUS_CODE::OK, "", request);
+        otaRestart = true;
     }
 
     inline void getEnv(REQUEST_T request)
@@ -157,7 +165,7 @@ namespace ESP_CONFIG_PAGE
         }
 
         ResponseContext c{};
-        initResponseContext(200, "text/plain", infoSize, c);
+        initResponseContext(CONP_STATUS_CODE::OK, "text/plain", infoSize, c);
         startResponse(request, c);
 
         for (uint8_t i = 0; i < envVarCount; i++)
@@ -180,8 +188,8 @@ namespace ESP_CONFIG_PAGE
 
     inline void enableEnvModule()
     {
-        addServerHandler((char*) F("/config/save"), HTTP_POST, saveEnv);
-        addServerHandler((char*) F("/config/env"), HTTP_GET, getEnv);
+        addServerHandler("/config/save", HTTP_POST, saveEnv);
+        addServerHandler("/config/env", HTTP_GET, getEnv);
     }
 }
 
