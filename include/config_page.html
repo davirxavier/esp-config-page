@@ -948,6 +948,16 @@
                 alert('Error while trying to fetch info from controller.')
             }
 
+            let pending = 1;
+            function processPending() {
+                if (pending <= 0) {
+                    if (cb) cb();
+                    return;
+                }
+
+                pending--;
+            }
+
             <!--MARKER-ENV-->
             doRequest('env', undefined, 'GET', (success, response) => {
                 if (!success) {
@@ -1005,17 +1015,7 @@
                     envCont.appendChild(mainElement);
                 }
 
-                if (document.getElementById('env-container').childElementCount === 0) {
-                    document.getElementById('env-div').style.display = 'none';
-                    messageModule.style.removeProperty('display');
-                    messageModule.innerText = 'No environment variables are defined.';
-                } else {
-                    messageModule.style.display = 'none';
-                }
-
-                if (currentModule == moduleTypes.ENV_VARS) {
-                    moduleTypes.ENV_VARS.onChange();
-                }
+                processPending();
             });
             <!--END-ENV-->
 
@@ -1037,22 +1037,13 @@
                     caCont.appendChild(button);
                 }
 
-                if (document.getElementById('custom-actions-div').childElementCount === 0) {
-                    messageModule.style.removeProperty('display');
-                    messageModule.innerText = 'No actions defined.';
-                } else {
-                    messageModule.style.display = 'none';
-                }
-
-                if (currentModule == moduleTypes.CUSTOM_ACTIONS) {
-                    moduleTypes.CUSTOM_ACTIONS.onChange();
-                }
+                processPending();
             });
             <!--END-CA-->
         });
     }
 
-    updateInfo();
+    // updateInfo();
 
     <!--MARKER-WIRELESS-->
     const WIFI_STATUS = {
@@ -1436,19 +1427,26 @@
         CUSTOM_ACTIONS: {
             name: 'Actions',
             title: 'TRIGGER ACTIONS',
-            onChange: () => {},
+            onChange: () => {
+                if (document.getElementById('custom-actions-div').childElementCount === 0) {
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No actions defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
+            },
         },
         ENV_VARS: {
             name: 'Environment',
             title: 'CONFIGURE ENVIRONMENT VARIABLES',
             onChange: () => {
-                // if (document.getElementById('env-container').childElementCount === 0) {
-                //     document.getElementById('env-div').style.display = 'none';
-                //     messageModule.style.removeProperty('display');
-                //     messageModule.innerText = 'No environment variables are defined.';
-                // } else {
-                //     messageModule.style.display = 'none';
-                // }
+                if (document.getElementById('env-container').childElementCount === 0) {
+                    document.getElementById('env-div').style.display = 'none';
+                    messageModule.style.removeProperty('display');
+                    messageModule.innerText = 'No environment variables are defined.';
+                } else {
+                    messageModule.style.display = 'none';
+                }
             }
         },
         LOGGING: {
@@ -1518,8 +1516,10 @@
 
     const tabFromStorage = parseInt(sessionStorage.getItem('tab') || "0");
     setTimeout(() => {
-        changeModule(loadedModules[tabFromStorage], tabFromStorage, moduleSel.children.item(tabFromStorage+1));
-    }, 300);
+        updateInfo(() => {
+            changeModule(loadedModules[tabFromStorage], tabFromStorage, moduleSel.children.item(tabFromStorage+1));
+        });
+    }, 100);
 </script>
 </body>
 </html>
