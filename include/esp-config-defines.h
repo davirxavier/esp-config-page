@@ -23,7 +23,6 @@
 #define ESP_CONP_SEND_REQ(p...) ESP_CONFIG_PAGE::server->send(p)
 #endif
 
-
 namespace ESP_CONFIG_PAGE
 {
     String username;

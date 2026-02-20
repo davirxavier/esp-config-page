@@ -25,10 +25,6 @@
   ],
   "dependencies": [
     {
-      "name": "arduinoWebSockets",
-      "version": "https://github.com/davirxavier/arduinoWebSockets/archive/refs/tags/1.0.0.zip"
-    },
-    {
       "name": "asyncWebServer",
       "version": "esp32async/ESPAsyncWebServer@3.10.0"
     }

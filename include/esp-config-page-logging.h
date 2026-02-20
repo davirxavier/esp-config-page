@@ -1,12 +1,11 @@
 #ifndef DX_ESP_CONFIG_PAGE_LOGGING_H
 #define DX_ESP_CONFIG_PAGE_LOGGING_H
 
-#define ENABLE_LOGGING_MODULE
+#ifdef ESP_CONP_ENABLE_LOGGING_MODULE
 
 #include <esp-config-defines.h>
 
 #include "Arduino.h"
-#include "WebSocketsServer.h"
 #include "LittleFS.h"
 
 #define MAX_CLIENTS 8
@@ -23,14 +22,18 @@ namespace ESP_CONFIG_PAGE_LOGGING
     using SERIAL_T = HardwareSerial;
 #endif
 
-    WebSocketsServer server(ESP_CONP_LOGGING_PORT);
+#ifndef ESP_CONP_ASYNC_WEBSERVER
+    AsyncWebServer server(ESP_CONP_LOGGING_PORT);
+#endif
+
+    bool handlerAdded = false;
+    AsyncWebSocket webSocket("/ws");
+    // WebSocketsServer server(ESP_CONP_LOGGING_PORT);
     char messageBuffer[1024]{};
     unsigned long lastClean;
     uint8_t pingMessage[] = {0xDE};
 
     Stream* logSerial = &Serial;
-    String username;
-    String password;
 
     bool retentionEnabled = false;
     String logFilePath;
@@ -57,6 +60,19 @@ namespace ESP_CONFIG_PAGE_LOGGING
 
     ConnectedClient connectedClients[MAX_CLIENTS];
 
+    inline ConnectedClient *getClient(const int id)
+    {
+        for (size_t i = 0; i < MAX_CLIENTS; i++)
+        {
+            if (connectedClients[i].id == id)
+            {
+                return &connectedClients[i];
+            }
+        }
+
+        return nullptr;
+    }
+
     inline bool clientIsConnected(int i)
     {
         return connectedClients[i].id >= 0;
@@ -68,17 +84,31 @@ namespace ESP_CONFIG_PAGE_LOGGING
         {
             if (connectedClients[i].id == id)
             {
-                connectedClients[i].id = -1;
-
-                if (server.clientIsConnected(id))
+                AsyncWebSocketClient* client = webSocket.client(id);
+                if (client != nullptr && client->status() == WS_CONNECTED)
                 {
-                    server.disconnect(id);
+                    client->close();
                 }
+
+                connectedClients[i].id = -1;
                 return true;
             }
         }
 
         return false;
+    }
+
+    inline int isFull()
+    {
+        for (size_t i = 0; i < MAX_CLIENTS; i++)
+        {
+            if (connectedClients[i].id < 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     inline int registerClient(uint8_t id)
@@ -97,27 +127,32 @@ namespace ESP_CONFIG_PAGE_LOGGING
         return -1;
     }
 
-    inline void sendMessage(uint8_t clientId, const char *message, const size_t len, bool isText, EventType eventType)
+    inline void sendMessage(uint8_t clientId, const char* message, size_t len, bool isText, EventType eventType)
     {
         messageBuffer[0] = eventType;
-        memcpy(messageBuffer+1, message, len);
+
+        if (len > sizeof(messageBuffer) - 1)
+        {
+            len = sizeof(messageBuffer) - 1;
+        }
+        memcpy(messageBuffer + 1, message, len);
 
         if (isText)
         {
-            server.sendTXT(clientId, messageBuffer, len+1);
+            webSocket.text(clientId, messageBuffer, len + 1);
         }
         else
         {
-            server.sendBIN(clientId, (uint8_t*) messageBuffer, len+1);
+            webSocket.binary(clientId, messageBuffer, len + 1);
         }
     }
 
-    inline void sendMessage(uint8_t clientId, const char *message, EventType eventType)
+    inline void sendMessage(uint8_t clientId, const char* message, EventType eventType)
     {
         sendMessage(clientId, message, strlen(message), true, eventType);
     }
 
-    inline void broadcastMessage(const char *message, const size_t len, bool isText, EventType eventType)
+    inline void broadcastMessage(const char* message, const size_t len, bool isText, EventType eventType)
     {
         for (uint8_t i = 0; i < MAX_CLIENTS; i++)
         {
@@ -146,7 +181,7 @@ namespace ESP_CONFIG_PAGE_LOGGING
                 return SERIAL_T::write(buffer, size);
             }
 
-            broadcastMessage((char*) buffer, size, true, LOG);
+            broadcastMessage((char*)buffer, size, true, LOG);
 
             if (retentionEnabled && logFile && logFile.size() >= maximumSizeBytes)
             {
@@ -166,7 +201,7 @@ namespace ESP_CONFIG_PAGE_LOGGING
         }
     };
 
-    inline void enableLogging(String u, String p, Stream& serial)
+    inline void enableLogging(Stream& serial)
     {
         logSerial = &serial;
 
@@ -175,102 +210,114 @@ namespace ESP_CONFIG_PAGE_LOGGING
             connectedClients[i].id = -1;
         }
 
-        username = u;
-        password = p;
-
-        server.onEvent([](uint8_t client, WStype_t type, uint8_t* payload, size_t length)
+        webSocket.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len)
         {
-            if (type == WStype_CONNECTED)
+            uint32_t clientId = client->id();
+
+            if (type == WS_EVT_CONNECT)
             {
-                int pos = registerClient(client);
+                int pos = registerClient(clientId);
                 if (pos < 0)
                 {
-                    sendMessage(client, "socket full", ERROR);
-                    server.disconnect(client);
+                    sendMessage(clientId, "socket full", ERROR);
+                    server->close(clientId);
                     return;
                 }
 
-                LOGF("Client connected: %d\n", client);
+                LOGF("Client connected: %d\n", clientId);
             }
-            else if (type == WStype_DISCONNECTED)
+            else if (type == WS_EVT_DISCONNECT)
             {
-                removeClient(client);
+                removeClient(clientId);
             }
-            else if (type == WStype_TEXT || type == WStype_BIN)
+            else if (type == WS_EVT_DATA)
             {
-                char eventType = payload[0];
-                const char *payloadWithoutEvent = (const char*) (length == 0 ? payload : payload+1);
-                const size_t lengthWithoutEvent = length == 0 ? 0 : length-1;
-
+                char eventType = data[0];
                 switch (eventType)
                 {
                 case AUTH:
                     {
-                        LOGF("Client auth request: %d\n", client);
+                        const char* payload = (const char*)(len == 0 ? data : data + 1);
+                        const size_t lengthWithoutEvent = len == 0 ? 0 : len - 1;
+                        LOGF("Client auth request: %d\n", clientId);
 
-                        char *separator = strchr(payloadWithoutEvent, ':');
+                        char authBuf[128];
+                        size_t copyLen = (lengthWithoutEvent < sizeof(authBuf) - 1) ? lengthWithoutEvent : sizeof(authBuf) - 1;
+                        memcpy(authBuf, payload, copyLen);
+                        authBuf[copyLen] = '\0';
+
+                        char* separator = strchr(authBuf, ':');
                         if (separator == nullptr)
                         {
-                            sendMessage(client, "Invalid auth", ERROR);
+                            sendMessage(clientId, "Invalid auth", ERROR);
                             return;
                         }
 
                         separator[0] = 0;
-                        char *sentPass = separator+1;
-                        if (strcmp(payloadWithoutEvent, username.c_str()) != 0 || strcmp(sentPass, password.c_str()))
+                        char* sentPass = separator + 1;
+                        if (strcmp(authBuf, ESP_CONFIG_PAGE::username.c_str()) != 0 || strcmp(sentPass, ESP_CONFIG_PAGE::password.c_str()))
                         {
-                            sendMessage(client, "Invalid auth", ERROR);
+                            sendMessage(clientId, "Invalid auth", ERROR);
                             return;
                         }
 
                         for (size_t i = 0; i < MAX_CLIENTS; i++)
                         {
-                            if (connectedClients[i].id == client)
+                            if (connectedClients[i].id == clientId)
                             {
                                 connectedClients[i].authed = true;
-                                sendMessage(client, "", AUTH);
+                                sendMessage(clientId, "", AUTH);
                                 return;
                             }
                         }
 
-                        sendMessage(client, "unknown client", ERROR);
+                        sendMessage(clientId, "", AUTH);
                         break;
                     }
                 case ALL_LOGS:
-                    {
-                        // if (retentionEnabled)
-                        // {
-                        //     retentionEnabled = false;
-                        //     logFile.close();
-                        //
-                        //     File file = LittleFS.open(logFilePath, "r");
-                        //     char buf[file.size()+1]{};
-                        //     file.readBytes(buf, sizeof(buf)-1);
-                        //     file.close();
-                        //
-                        //     sendMessage(client, buf, ALL_LOGS);
-                        //     logFile = LittleFS.open(logFilePath, "a");
-                        //     retentionEnabled = true;
-                        // }
-                        // else
-                        // {
-                        sendMessage(client, "", ALL_LOGS);
-                        // }
-                        break;
-                    }
+                    sendMessage(clientId, "", ALL_LOGS);
+                    break;
                 case PING:
                     {
-                        sendMessage(client, "", PONG);
+                        sendMessage(clientId, "", PONG);
                         break;
                     }
                 default:
                     {
-                        sendMessage(client, "Invalid event type", ERROR);
+                        sendMessage(clientId, "Invalid event type", ERROR);
                         break;
                     }
                 }
             }
         });
+
+        if (handlerAdded)
+        {
+            webSocket.enable(true);
+        }
+        else
+        {
+            // Native javascript client doesn't support sending headers, disabled for now
+            // server.addHandler(&webSocket).addMiddleware([](AsyncWebServerRequest* r, ArMiddlewareNext next)
+            // {
+            //     if (!r->authenticate(ESP_CONFIG_PAGE::username.c_str(), ESP_CONFIG_PAGE::password.c_str()))
+            //     {
+            //         r->requestAuthentication();
+            //         return;
+            //     }
+            //
+            //     if (isFull())
+            //     {
+            //         r->send(503, "text/plain", "socket full");
+            //     }
+            //     else
+            //     {
+            //         next();
+            //     }
+            // });
+            server.addHandler(&webSocket);
+            handlerAdded = true;
+        }
 
         server.begin();
         isLoggingEnabled = true;
@@ -280,19 +327,20 @@ namespace ESP_CONFIG_PAGE_LOGGING
     {
         if (isLoggingEnabled)
         {
-            server.close();
+#ifdef ESP_CONP_ASYNC_WEBSERVER
+            webSocket.enable(false);
+#else
+            server.end();
+#endif
+
             isLoggingEnabled = false;
         }
     }
 
     inline void loop()
     {
-        server.loop();
-
-        if (millis() - lastClean > 2000)
+        if (millis() - lastClean > 1000)
         {
-            // broadcastMessage("P", 1, true, PING);
-
             if (retentionEnabled && logFile)
             {
                 logFile.flush();
@@ -325,4 +373,5 @@ namespace ESP_CONFIG_PAGE_LOGGING
     }
 }
 
+#endif
 #endif //DX_ESP_CONFIG_PAGE_LOGGING_H
