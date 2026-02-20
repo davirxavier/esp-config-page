@@ -471,6 +471,7 @@ namespace ESP_CONFIG_PAGE
         }
     }
 
+#ifndef ESP_CONP_HTTPS_SERVER
     inline UploadEventType mapValuesToUploadEvent(
 #ifdef ESP_CONP_ASYNC_WEBSERVER
         size_t index)
@@ -500,6 +501,7 @@ namespace ESP_CONFIG_PAGE
 
         return UPLOAD_ABORT;
     }
+#endif
 #endif
 
 #ifdef ESP_CONP_HTTPS_SERVER
