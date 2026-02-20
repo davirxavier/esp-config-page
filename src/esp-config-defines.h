@@ -23,11 +23,17 @@
 #define ESP_CONP_SEND_REQ(p...) ESP_CONFIG_PAGE::server->send(p)
 #endif
 
+#ifdef ESP32
+#define ESP_CONP_INLINE inline
+#else
+#define ESP_CONP_INLINE
+#endif
+
 namespace ESP_CONFIG_PAGE
 {
-    String username;
-    String password;
-    String nodeName;
+    ESP_CONP_INLINE String username;
+    ESP_CONP_INLINE String password;
+    ESP_CONP_INLINE String nodeName;
 
     inline unsigned int getMaxLineLength(const char* str) {
         unsigned int maxLength = 0;
@@ -59,11 +65,11 @@ namespace ESP_CONFIG_PAGE
         return maxLength;
     }
 
-    Stream* serial = &Serial;
+    ESP_CONP_INLINE Stream* serial = &Serial;
 
-    String name;
-    const char escapeChars[] = {':', ';', '+', '\0'};
-    const char escaper = '|';
+    ESP_CONP_INLINE String name;
+    ESP_CONP_INLINE const char escapeChars[] = {':', ';', '+', '\0'};
+    ESP_CONP_INLINE const char escaper = '|';
 
     inline uint8_t countChar(const char str[], const char separator)
     {
@@ -109,8 +115,8 @@ namespace ESP_CONFIG_PAGE
         ENVIRONMENT,
         ATTRIBUTES,
     };
-    Modules *enabledModules = nullptr;
-    uint8_t enabledModulesCount = 0;
+    ESP_CONP_INLINE Modules *enabledModules = nullptr;
+    ESP_CONP_INLINE uint8_t enabledModulesCount = 0;
 
     /**
      * Free dynamically allocated array of arrays.

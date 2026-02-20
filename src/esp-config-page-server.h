@@ -17,8 +17,9 @@
 #include "mbedtls/base64.h"
 #else
 #ifdef ESP32
-#include "WebServer.h"
-#include "Update.h"
+#include <WiFiClient.h>
+#include <WebServer.h>
+#include <Update.h>
 #elif ESP8266
 #include "ESP8266WebServer.h"
 #endif
@@ -87,7 +88,7 @@ namespace ESP_CONFIG_PAGE
 
     static WEBSERVER_T *server = nullptr;
     using RequestCallback = std::function<void(REQUEST_T)>;
-    int registeredHandlers = 0;
+    ESP_CONP_INLINE int registeredHandlers = 0;
 
 #ifdef ESP_CONP_HTTPS_SERVER
     inline void setupServerConfig(httpd_ssl_config *sslConfig)

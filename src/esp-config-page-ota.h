@@ -66,25 +66,25 @@ namespace ESP_CONFIG_PAGE
 
 
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
-    WebSocketsServer otaWsServer(ESP32_CONP_OTA_WS_PORT);
-    ESP_CONFIG_PAGE_LOGGING::ConnectedClient *otaClient = nullptr;
-    unsigned long lastWsServerUpdate = 0;
+    ESP_CONP_INLINE WebSocketsServer otaWsServer(ESP32_CONP_OTA_WS_PORT);
+    ESP_CONP_INLINE ESP_CONFIG_PAGE_LOGGING::ConnectedClient *otaClient = nullptr;
+    ESP_CONP_INLINE unsigned long lastWsServerUpdate = 0;
 #else
-    REQUEST_T currentRequest = nullptr;
+    ESP_CONP_INLINE REQUEST_T currentRequest = nullptr;
 #endif
 
-    unsigned long otaTimer = 0;
-    unsigned long otaTimeout = 60000;
-    bool otaStarted = false;
-    char otaMd5[33]{};
-    bool otaMd5Started = false;
-    bool isOtaFilesystem = false;
-    bool otaRestart = false;
+    ESP_CONP_INLINE unsigned long otaTimer = 0;
+    ESP_CONP_INLINE unsigned long otaTimeout = 60000;
+    ESP_CONP_INLINE bool otaStarted = false;
+    ESP_CONP_INLINE char otaMd5[33]{};
+    ESP_CONP_INLINE bool otaMd5Started = false;
+    ESP_CONP_INLINE bool isOtaFilesystem = false;
+    ESP_CONP_INLINE bool otaRestart = false;
 
     using OtaStartCallback = std::function<void()>;
     inline OtaStartCallback otaStartCallback = nullptr;
 
-    ESP_CONP_MD5_CTX_T otaMd5Ctx;
+    ESP_CONP_INLINE ESP_CONP_MD5_CTX_T otaMd5Ctx;
 
     inline void otaChecksumStart()
     {

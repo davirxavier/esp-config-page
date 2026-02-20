@@ -28,10 +28,10 @@ namespace ESP_CONFIG_PAGE
         char *value;
     };
 
-    EnvVar** envVars;
-    uint8_t envVarCount = 0;
-    uint8_t maxEnvVars = 0;
-    KeyValueStorage* envVarStorage = nullptr;
+    ESP_CONP_INLINE EnvVar** envVars;
+    ESP_CONP_INLINE uint8_t envVarCount = 0;
+    ESP_CONP_INLINE uint8_t maxEnvVars = 0;
+    ESP_CONP_INLINE KeyValueStorage* envVarStorage = nullptr;
 
     /**
      * Set the type persistent environment variables storage for the library, as well as use the instance to recover any saved variables (if there are any).

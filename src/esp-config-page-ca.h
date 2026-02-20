@@ -15,9 +15,9 @@ namespace ESP_CONFIG_PAGE
         std::function<void(REQUEST_T& server)> handler;
     };
 
-    CustomAction** customActions;
-    uint8_t customActionsCount = 0;
-    uint8_t maxCustomActions = 0;
+    ESP_CONP_INLINE CustomAction** customActions;
+    ESP_CONP_INLINE uint8_t customActionsCount = 0;
+    ESP_CONP_INLINE uint8_t maxCustomActions = 0;
 
     inline void triggerCustomAction(REQUEST_T request) // TODO
     {

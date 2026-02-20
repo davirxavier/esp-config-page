@@ -8,17 +8,17 @@
 
 namespace ESP_CONFIG_PAGE
 {
-    String apSsid = "ESP";
-    String apPass = "12345678";
-    IPAddress apIp = IPAddress(192, 168, 1, 1);
-    String dnsName = "esp-config.local";
-    int lastConnectionError = -1;
-    unsigned long connectionRetryCounter;
-    unsigned long connectionTimeoutCounter;
-    unsigned long connectionTimeoutMs = 15000;
-    unsigned long currentReconnectRetry = 1;
-    unsigned long reconnectTimeMax = 120000;
-    KeyValueStorage *wifiStorage = nullptr;
+    ESP_CONP_INLINE String apSsid = "ESP";
+    ESP_CONP_INLINE String apPass = "12345678";
+    ESP_CONP_INLINE IPAddress apIp = IPAddress(192, 168, 1, 1);
+    ESP_CONP_INLINE String dnsName = "esp-config.local";
+    ESP_CONP_INLINE int lastConnectionError = -1;
+    ESP_CONP_INLINE unsigned long connectionRetryCounter;
+    ESP_CONP_INLINE unsigned long connectionTimeoutCounter;
+    ESP_CONP_INLINE unsigned long connectionTimeoutMs = 15000;
+    ESP_CONP_INLINE unsigned long currentReconnectRetry = 1;
+    ESP_CONP_INLINE unsigned long reconnectTimeMax = 120000;
+    ESP_CONP_INLINE KeyValueStorage *wifiStorage = nullptr;
 
     inline void addWifiNetwork(const char *ssid, const char *pass)
     {

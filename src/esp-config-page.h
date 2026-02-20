@@ -84,10 +84,6 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPAsyncWebServer.h>
-#include <esp-config-page-logging.h>
 #include <esp-config-defines.h>
 #include <esp-config-page-server.h>
 #include <esp-config-page-ca.h>
@@ -95,8 +91,6 @@
 #include <esp-config-page-files.h>
 #include <esp-config-page-ota.h>
 #include <esp-config-page-wireless.h>
-#include <esp-config-page-attributes.h>
-#include <esp-config-page-scheduling.h>
 
 #include "config-html.h"
 
@@ -278,11 +272,6 @@ namespace ESP_CONFIG_PAGE
             case ENVIRONMENT:
                 {
                     enableEnvModule();
-                    break;
-                }
-            case ATTRIBUTES:
-                {
-                    enableAttributesModule();
                     break;
                 }
             default: break;
