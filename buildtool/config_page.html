@@ -543,7 +543,7 @@
             let str = '';
             console.log(obj)
             Object.keys(obj).filter(key => key).forEach(key => str += `${key}\n${obj[key]}\n`);
-            doRequest('save', str, "POST", (success, res) => {
+            doRequest('save', str, "POST", undefined, (success, res) => {
                 alert(success ? 'Environment saved successfully!' : `Error while saving: ${res}`);
                 location.reload();
             });
@@ -554,7 +554,7 @@
     <!--MARKER-CA-->
     function customAction(eventId) {
         if (confirm('Do action: ' + eventId + ' ?')) {
-            doRequest('customa', eventId, "POST", (success) => {
+            doRequest('customa', undefined, "POST", eventId, (success) => {
                 if (success) {
                     window.alert('Action executed successfully!');
                     location.reload();
@@ -585,9 +585,14 @@
     }
 
     let currentAuth = undefined;
-    function doRequest(uri, data, method, cb, retryCount = 0) {
+    function doRequest(uri, data, method, argParam, cb, doRetry = false, retryCount = 0) {
+        let finalUri = (window.location.href.endsWith('/') ? window.location.href : window.location.href + '/') + uri;
+        if (argParam) {
+            finalUri = `${finalUri}?arg=${encodeURIComponent(argParam)}`;
+        }
+
         var xhr = new XMLHttpRequest();
-        xhr.open(method, (window.location.href.endsWith('/') ? window.location.href : window.location.href + '/') + uri, true);
+        xhr.open(method, finalUri, true);
         xhr.setRequestHeader('Content-Type', 'text/plain');
         xhr.send(data);
 
@@ -603,10 +608,10 @@
                 currentAuth = this.getResponseHeader('Authorization');
             }
 
-            if (!success && retryCount < 3) {
+            if (doRetry && !success && retryCount < 3) {
                 console.warn(`Request failed, retrying (${retryCount + 1})...`);
                 setTimeout(() => {
-                    doRequest(uri, data, method, cb, retryCount + 1);
+                    doRequest(uri, data, method, argParam, cb, retryCount + 1);
                 }, 500);
             } else {
                 if (cb) cb(success, this.responseText);
@@ -617,7 +622,7 @@
 
     <!--MARKER-FILES-->
     function updateFiles() {
-        doRequest('files', currentBrowserPath, "POST", (success, response) => {
+        doRequest('files', undefined, "GET", currentBrowserPath, (success, response) => {
             if (success) {
                 filesContainer.innerHTML = '';
 
@@ -716,7 +721,10 @@
     function downloadFile(path) {
         const xhr = new XMLHttpRequest();
 
-        xhr.open('POST',  (window.location.href.endsWith('/') ? window.location.href : window.location.href + '/') + 'files/download', true);
+        xhr.open('GET',
+            (window.location.href.endsWith('/') ? window.location.href : window.location.href + '/') +
+            'files/download?arg=' + encodeURIComponent(path),
+            true);
         xhr.responseType = 'blob';
 
         xhr.onload = (e) => {
@@ -730,12 +738,12 @@
             link.click();
         };
 
-        xhr.send(path);
+        xhr.send();
     }
 
     function deleteFile(path) {
         if (confirm(`Delete file "${path}"?`)) {
-            doRequest('files/delete', path, 'POST', () => {
+            doRequest('files/delete', undefined, 'DELETE', path, () => {
                 updateFiles();
             });
         }
@@ -815,7 +823,7 @@
             showOtaLoader();
 
             const file = input.files[0];
-            let otaSocket = new WebSocket('ws://' + getHostWithoutPort() + ':' + otaPort + '/ws');
+            let otaSocket = new WebSocket('ws://' + getHostWithoutPort() + ':' + otaPort + '/config/update/ws');
             let error;
 
             const sendNextChunk = async () => {
@@ -995,7 +1003,7 @@
     let test = false;
 
     function updateInfo(cb) {
-        doRequest('info', undefined, 'GET', (success, response) => {
+        doRequest('info', undefined, 'GET', undefined, (success, response) => {
             if (success) {
                 const split = splitEscaped(response, '+');
                 const name = split[0];
@@ -1037,7 +1045,7 @@
             }
 
             <!--MARKER-ENV-->
-            doRequest('env', undefined, 'GET', (success, response) => {
+            doRequest('env', undefined, 'GET', undefined, (success, response) => {
                 if (!success) {
                     return;
                 }
@@ -1098,7 +1106,7 @@
             <!--END-ENV-->
 
             <!--MARKER-CA-->
-            doRequest('customa', undefined, 'GET', (success, response) => {
+            doRequest('customa', undefined, 'GET', undefined, (success, response) => {
                 const caCont = document.getElementById('custom-actions-div');
                 caCont.innerHTML = '';
 
@@ -1170,7 +1178,7 @@
         document.getElementById('wifi-list').innerHTML = '';
         document.getElementById('wifi-loader').style.display = 'block';
 
-        doRequest('wifi', escapeStr(ssid) + "\n" + escapeStr(pass) + '\n', 'POST', (success, responseText) => {
+        doRequest('wifi', undefined, 'POST', escapeStr(ssid) + "\n" + escapeStr(pass) + '\n', (success, responseText) => {
             if (success) {
                 alert('Connection attempt started, this page can be down for some time while connecting.');
                 location.reload();
@@ -1200,7 +1208,7 @@
 
         loadingWifi = true;
 
-        doRequest('wifi', undefined, 'GET', (success, response) => {
+        doRequest('wifi', undefined, 'GET', undefined, (success, response) => {
             loadingWifi = false;
             loader.style.display = 'none';
 

@@ -48,6 +48,14 @@ namespace ESP_CONFIG_PAGE
             "404 NOT FOUND",
             "500 INTERNAL SERVER ERROR",
         };
+
+        static const int statusByEnum[] = {
+            200,
+            400,
+            401,
+            404,
+            500,
+        };
     }
 
     struct ResponseContext
@@ -67,6 +75,15 @@ namespace ESP_CONFIG_PAGE
         char contentType[33]{};
         size_t length = 0;
     };
+
+#ifdef ESP_CONP_ASYNC_WEBSERVER
+    struct AsyncHelperObj
+    {
+        uint8_t *buffer = nullptr;
+        size_t totalLen = 0;
+        size_t bufferLen = 0;
+    };
+#endif
 
 #ifdef ESP_CONP_ASYNC_WEBSERVER
     using WEBSERVER_T = AsyncWebServer;
@@ -140,6 +157,33 @@ namespace ESP_CONFIG_PAGE
 #endif
     }
 
+    inline size_t getParam(REQUEST_T request, const char* name, char* output, size_t outputSize)
+    {
+#ifdef ESP_CONP_ASYNC_WEBSERVER
+        if (request->hasParam(name))
+        {
+            return snprintf(output, outputSize, "%s", request->getParam(name)->value().c_str());
+        }
+#elifdef ESP_CONP_HTTPS_SERVER
+        if (httpd_req_get_url_query_str(request, output, outputSize) == ESP_OK)
+        {
+            char buffer[outputSize]{};
+            if (httpd_query_key_value(output, name, buffer, outputSize) == ESP_OK)
+            {
+                urlDecode(buffer);
+                return snprintf(output, outputSize, "%s", buffer);
+            }
+        }
+#else
+        if (request->hasArg(name))
+        {
+            return snprintf(output, outputSize, "%s", request->arg(name).c_str());
+        }
+#endif
+
+        return 0;
+    }
+
     inline void requestAuth(REQUEST_T r)
     {
 #ifdef ESP_CONP_HTTPS_SERVER
@@ -211,7 +255,67 @@ namespace ESP_CONFIG_PAGE
         {
             VALIDATE_AUTH(req);
             LOGF("Received request: %s - %d.\n", uri, method);
+
             fn(req);
+
+            if (req->_tempObject != nullptr)
+            {
+                auto obj = static_cast<AsyncHelperObj*>(req->_tempObject);
+                LOGF("Request body: %s\n", (char*) obj->buffer);
+                delete[] obj->buffer;
+                delete obj;
+                req->_tempObject = nullptr;
+            }
+        }, nullptr, [](REQUEST_T req, uint8_t *data, size_t len, size_t index, size_t total)
+        {
+            if (total == 0)
+            {
+                return;
+            }
+
+            if (total > ESP_CONP_MAX_ENV_LENGTH)
+            {
+                req->send(400, "text/plain", "body too big");
+                return;
+            }
+
+            size_t bufferLen = total+4;
+            if (req->_tempObject == nullptr)
+            {
+                VALIDATE_AUTH(req);
+
+                auto obj = new (std::nothrow) AsyncHelperObj();
+                if (obj == nullptr)
+                {
+                    req->send(400, "text/plain", "could not allocate body buffer");
+                    return;
+                }
+
+                obj->totalLen = total;
+                obj->bufferLen = bufferLen;
+                obj->buffer = new (std::nothrow) uint8_t[bufferLen]{};
+                if (obj->buffer == nullptr)
+                {
+                    delete obj;
+                    req->send(400, "text/plain", "could not allocate body buffer");
+                    return;
+                }
+
+                req->_tempObject = obj;
+            }
+
+            AsyncHelperObj *obj = (AsyncHelperObj*) req->_tempObject;
+            if (index + len > obj->totalLen)
+            {
+                delete[] obj->buffer;
+                delete obj;
+                req->_tempObject = nullptr;
+                req->send(400, "text/plain", "invalid body chunk");
+                return;
+            }
+
+            memcpy(obj->buffer + index, data, len);
+            obj->buffer[obj->totalLen] = 0;
         });
 #elifdef ESP_CONP_HTTPS_SERVER
         auto* heap_fn = new RequestCallback(fn); // No need to unallocate, handlers will never be unregistered
@@ -270,11 +374,11 @@ namespace ESP_CONFIG_PAGE
         if (c.fullContent == nullptr)
         {
             c.response = request->beginResponseStream(c.contentType, c.length + 64);
-            c.response->setCode(c.status);
+            c.response->setCode(CONP_STATUS_CODE::statusByEnum[c.status]);
         }
         else
         {
-            c.response = request->beginResponse(c.status, c.contentType, c.fullContent, c.length);
+            c.response = request->beginResponse(CONP_STATUS_CODE::statusByEnum[c.status], c.contentType, c.fullContent, c.length);
         }
 #elifdef ESP_CONP_HTTPS_SERVER
         if (c.status >= 0 && c.status < CONP_STATUS_CODE::INVALID)
@@ -454,7 +558,13 @@ namespace ESP_CONFIG_PAGE
 #ifdef ESP_CONP_HTTPS_SERVER
         return req->content_len;
 #elifdef ESP_CONP_ASYNC_WEBSERVER
-        return req->contentLength();
+        if (req->_tempObject != nullptr)
+        {
+            auto obj = (AsyncHelperObj*) req->_tempObject;
+            return obj->totalLen;
+        }
+
+        return 0;
 #else
         return req->clientContentLength();
 #endif
@@ -462,12 +572,12 @@ namespace ESP_CONFIG_PAGE
 
     inline size_t getBody(REQUEST_T req, char* buf, size_t bufsize, bool flushRemaining = true)
     {
-#ifdef ESP_CONP_HTTPS_SERVER
         if (!buf || bufsize == 0)
         {
             return 0;
         }
 
+#ifdef ESP_CONP_HTTPS_SERVER
         memset(buf, 0, bufsize);
 
         size_t totalLen = req->content_len;
@@ -493,9 +603,29 @@ namespace ESP_CONFIG_PAGE
         }
 
         return receivedTotal;
+#elifdef ESP_CONP_ASYNC_WEBSERVER
+        if (req->_tempObject != nullptr)
+        {
+            auto obj = (AsyncHelperObj*) req->_tempObject;
+            if (obj->buffer == nullptr)
+            {
+                return 0;
+            }
+
+            if (obj->bufferLen > obj->totalLen)
+            {
+                memset(obj->buffer + obj->totalLen, 0, obj->bufferLen - obj->totalLen);
+            }
+            else
+            {
+                obj->buffer[obj->bufferLen-1] = 0;
+            }
+            return snprintf(buf, bufsize, "%s", (char*) obj->buffer);
+        }
+
+        return 0;
 #else
-        String body = req->arg("plain");
-        return snprintf(buf, bufsize, "%s", body.c_str());
+        return snprintf(buf, bufsize, "%s", server->arg("plain").c_str());
 #endif
     }
 
@@ -510,21 +640,18 @@ namespace ESP_CONFIG_PAGE
         httpd_resp_set_type(req, "text/plain");
         httpd_resp_send(req, message, strlen(message));
 #else
-        req->send(status, "text/plain", message);
+        req->send(CONP_STATUS_CODE::statusByEnum[status], "text/plain", message);
 #endif
     }
 
-    inline bool getBodyAndValidateMaxSize(REQUEST_T req, char *buf, size_t bufSize)
+    inline bool getArgParamAndValidateMaxSize(REQUEST_T req, char *buf, size_t bufSize)
     {
-        size_t totalLen = getBodyLen(req);
-        size_t received = getBody(req, buf, bufSize);
-
-        if (totalLen > received)
+        size_t len = getParam(req, "arg", buf, bufSize);
+        if (len > bufSize)
         {
-            sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, "Body too big.", req);
+            sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, "param too big.", req);
             return true;
         }
-
         return false;
     }
 }

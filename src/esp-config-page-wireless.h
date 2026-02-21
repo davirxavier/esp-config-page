@@ -228,7 +228,7 @@ namespace ESP_CONFIG_PAGE
     inline void wifiSet(REQUEST_T request)
     {
         char bodyBuf[128]{};
-        if (getBodyAndValidateMaxSize(request, bodyBuf, sizeof(bodyBuf)))
+        if (getArgParamAndValidateMaxSize(request, bodyBuf, sizeof(bodyBuf)))
         {
             return;
         }

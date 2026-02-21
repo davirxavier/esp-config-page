@@ -19,12 +19,13 @@ namespace ESP_CONFIG_PAGE
     inline void getFiles(REQUEST_T request)
     {
         char pathBuf[256]{};
-        if (getBodyAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
+        if (getArgParamAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
         {
             return;
         }
 
         checkPathEmpty(pathBuf);
+        LOGF("File search path: %s\n", pathBuf);
 
         ResponseContext c{};
         initResponseContext(CONP_STATUS_CODE::OK, "text/plain", 0, c);
@@ -71,7 +72,7 @@ namespace ESP_CONFIG_PAGE
     inline void downloadFile(REQUEST_T request)
     {
         char pathBuf[256]{};
-        if (getBodyAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
+        if (getArgParamAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
         {
             return;
         }
@@ -101,7 +102,7 @@ namespace ESP_CONFIG_PAGE
     inline void deleteFile(REQUEST_T request)
     {
         char pathBuf[256]{};
-        if (getBodyAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
+        if (getArgParamAndValidateMaxSize(request, pathBuf, sizeof(pathBuf)))
         {
             return;
         }
@@ -135,9 +136,9 @@ namespace ESP_CONFIG_PAGE
         LittleFS.begin();
 #endif
 
-        addServerHandler("/config/files", HTTP_POST, getFiles);
-        addServerHandler("/config/files/download", HTTP_POST, downloadFile);
-        addServerHandler("/config/files/delete", HTTP_POST, deleteFile);
+        addServerHandler("/config/files", HTTP_GET, getFiles);
+        addServerHandler("/config/files/download", HTTP_GET, downloadFile);
+        addServerHandler("/config/files/delete", HTTP_DELETE, deleteFile);
     }
 }
 

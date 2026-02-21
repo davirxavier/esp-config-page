@@ -22,15 +22,15 @@ namespace ESP_CONFIG_PAGE
     inline void triggerCustomAction(REQUEST_T request) // TODO
     {
         CustomAction* ca = nullptr;
-        char body[128]{};
-        if (getBodyAndValidateMaxSize(request, body, sizeof(body)))
+        char arg[128]{};
+        if (getArgParamAndValidateMaxSize(request, arg, sizeof(arg)))
         {
             return;
         }
 
         for (uint8_t i = 0; i < customActionsCount; i++)
         {
-            if (String(customActions[i]->key) == body)
+            if (String(customActions[i]->key) == arg)
             {
                 ca = customActions[i];
             }

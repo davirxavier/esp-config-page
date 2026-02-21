@@ -180,6 +180,32 @@ namespace ESP_CONFIG_PAGE
         return true;
     }
 
+    inline void urlDecode(char *str)
+    {
+        char *p = str;
+        char *q = str;
+
+        while (*p)
+        {
+            if (*p == '%' && isxdigit((unsigned char)p[1]) && isxdigit((unsigned char)p[2]))
+            {
+                char hex[3] = { p[1], p[2], 0 };
+                *q++ = (char)strtol(hex, NULL, 16);
+                p += 3;
+            }
+            else if (*p == '+')
+            {
+                *q++ = ' ';
+                p++;
+            }
+            else
+            {
+                *q++ = *p++;
+            }
+        }
+        *q = '\0';
+    }
+
     /**
      * Storage class for any key value pair.
      */
