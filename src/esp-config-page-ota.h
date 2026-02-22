@@ -5,12 +5,6 @@
 #ifndef ESP_CONFIG_PAGE_OTA_H
 #define ESP_CONFIG_PAGE_OTA_H
 
-#ifdef ESP32
-#include <mbedtls/md5.h>
-#elif ESP8266
-#include <md5.h>
-#endif
-
 #ifdef ESP32_CONFIG_PAGE_USE_ESP_IDF_OTA
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
@@ -23,34 +17,7 @@
 #include <ESPAsyncWebServer.h>
 #endif
 
-#ifdef ESP32
-
-#ifdef mbedtls_md5_starts_ret
-#define ESP_CONP_MD5_START(ctx) mbedtls_md5_starts_ret(ctx)
-#else
-#define ESP_CONP_MD5_START(ctx) mbedtls_md5_starts(ctx)
-#endif
-
-#ifdef mbedtls_md5_update_ret
-#define ESP_CONP_MD5_UPDATE(ctx, data, len) esp_md5_update_ret(ctx, data, len)
-#else
-#define ESP_CONP_MD5_UPDATE(ctx, data, len) esp_md5_update(ctx, data, len)
-#endif
-
-#ifdef mbedtls_md5_finish_ret
-#define ESP_CONP_MD5_END(ctx, res) mbedtls_md5_finish_ret(ctx, res)
-#else
-#define ESP_CONP_MD5_END(ctx, res) mbedtls_md5_finish(ctx, res)
-#endif
-
-#define ESP_CONP_MD5_CTX_T mbedtls_md5_context
-
-#elif ESP8266
-#define ESP_CONP_MD5_START(ctx) MD5Init(ctx)
-#define ESP_CONP_MD5_UPDATE(ctx, data, len) MD5Update(ctx, data, len)
-#define ESP_CONP_MD5_END(ctx, res) MD5Final(res, ctx)
-#define ESP_CONP_MD5_CTX_T md5_context_t
-#endif
+#include <esp-config-page-crypto.h>
 
 namespace ESP_CONFIG_PAGE
 {
@@ -68,15 +35,19 @@ namespace ESP_CONFIG_PAGE
 #endif
 #endif
 
-
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
-    static const size_t eventBufferSize = 256;
+    static constexpr size_t eventBufferSize = 256;
+    ESP_CONP_INLINE uint8_t currentOtaKey[32]{};
+    ESP_CONP_INLINE unsigned long lastOtaKeyGen = 0;
+    static constexpr unsigned long keyExpiration = 60 * 1000;
+    static constexpr size_t otaNonceSize = 12;
+    static constexpr size_t otaExpirySize = sizeof(uint32_t);
+    static constexpr size_t otaHashSize = ESP_CONP_CRYPTO_HASH_LEN;
 
     struct OtaClient
     {
         int id = -1;
         unsigned long connectedTime = 0;
-        bool authed = false;
 
         uint8_t eventBuffer[eventBufferSize]{};
         size_t dataOffset = 0;
@@ -88,6 +59,37 @@ namespace ESP_CONFIG_PAGE
         int sockfd = -1;
 #endif
     };
+
+    inline void refreshKey()
+    {
+        ESP_CONFIG_PAGE_CRYPTO::genRandom(currentOtaKey, sizeof(currentOtaKey));
+        lastOtaKeyGen = millis();
+    }
+
+    inline void handleTokenGen(REQUEST_T request)
+    {
+        refreshKey();
+        uint32_t expiry = (esp_timer_get_time() / 1000000ULL) + 60;
+        uint8_t data[otaNonceSize + otaExpirySize]{};
+        memcpy(data, &expiry, sizeof(expiry));
+        ESP_CONFIG_PAGE_CRYPTO::genRandom(data + sizeof(expiry), sizeof(data) - sizeof(expiry));
+
+        uint8_t outputHash[otaHashSize]{};
+        bool success = ESP_CONFIG_PAGE_CRYPTO::hmacHash(currentOtaKey, sizeof(currentOtaKey), data, sizeof(data), outputHash);
+        if (!success)
+        {
+            sendInstantResponse(CONP_STATUS_CODE::INTERNAL_SERVER_ERROR, "error generating hash", request);
+            return;
+        }
+
+        uint8_t fullOutput[sizeof(outputHash)+sizeof(data)]{};
+        memcpy(fullOutput, data, sizeof(data));
+        memcpy(fullOutput + sizeof(data), outputHash, sizeof(outputHash));
+
+        char encoded[ESP_CONFIG_PAGE_CRYPTO::calcBase64StrLen(sizeof(fullOutput))]{};
+        ESP_CONFIG_PAGE_CRYPTO::base64Encode(fullOutput, sizeof(fullOutput), encoded);
+        sendInstantResponse(CONP_STATUS_CODE::OK, encoded, request);
+    }
 
 #define ESP_CONP_WS_CHECK_AUTH() if (!otaClient->authed) {sendErrorResponse("", "Not authenticated."); return; }
 #if !defined(ESP_CONP_ASYNC_WEBSERVER) && !defined(ESP_CONP_HTTPS_SERVER)
@@ -161,7 +163,6 @@ namespace ESP_CONFIG_PAGE
 
     enum OtaEventType
     {
-        AUTH = 'A',
         RECONNECTION = 'R',
         START_FILESYSTEM = 'U',
         START_FIRMWARE = 'u',
@@ -192,7 +193,7 @@ namespace ESP_CONFIG_PAGE
             otaClient = nullptr;
         }
 
-        otaClient = new OtaClient(id, millis(), false);
+        otaClient = new OtaClient(id, millis());
         LOGF("Registered OTA client with ID %d\n", id);
     }
 
@@ -234,6 +235,7 @@ namespace ESP_CONFIG_PAGE
 
         delete otaClient;
         otaClient = nullptr;
+        refreshKey();
     }
 
     inline bool hasOtaClient()
@@ -531,69 +533,53 @@ namespace ESP_CONFIG_PAGE
     };
 
 #if defined(ESP32_CONP_OTA_USE_WEBSOCKETS)
-    inline void otaWsValidateAuth(uint8_t currentEvent, uint8_t *payload, size_t payloadLen)
+    inline bool otaWsValidateAuth(REQUEST_T request)
     {
-        if (currentEvent == OtaEventType::AUTH && otaStarted)
+        char authParam[96]{};
+        getParam(request, "token", authParam, sizeof(authParam));
+
+        uint8_t tokenBytes[96]{};
+        size_t written = 0;
+        ESP_CONFIG_PAGE_CRYPTO::base64Decode((uint8_t*) authParam, strlen(authParam), tokenBytes, sizeof(tokenBytes), written);
+
+        LOGF("Decoded token size is %d\n", written);
+        if (written != otaHashSize + otaNonceSize + otaExpirySize)
         {
-            LOGN("Had another OTA running already, aborting.");
-            otaAbort();
+            LOGN("OTA WS invalid token size.");
+            return false;
         }
 
-        constexpr size_t MAX_AUTH_LEN = 256;
-        if (payloadLen == 0 || payloadLen > MAX_AUTH_LEN)
+        size_t payloadLen = otaNonceSize + otaExpirySize;
+        uint8_t payload[payloadLen]{};
+        memcpy(payload, tokenBytes, otaExpirySize);
+        memcpy(payload + otaExpirySize, tokenBytes + otaExpirySize, otaNonceSize);
+
+        uint8_t expectedHash[otaHashSize]{};
+        ESP_CONFIG_PAGE_CRYPTO::hmacHash(currentOtaKey, sizeof(currentOtaKey), payload, payloadLen, expectedHash);
+        if (memcmp(expectedHash, tokenBytes+payloadLen, otaHashSize))
         {
-            sendErrorResponse("", "Invalid auth length.");
-            return;
+            LOGN("OTA WS invalid token.");
+            return false;
         }
 
-        char usernameAndPassword[MAX_AUTH_LEN + 1] = {};
-        memcpy(usernameAndPassword, payload, payloadLen);
-        usernameAndPassword[payloadLen] = '\0';
-
-        char *separator = strchr(usernameAndPassword, ':');
-        if (separator == nullptr)
+        uint32_t now = esp_timer_get_time() / 1000000ULL;
+        uint32_t expiry = 0;
+        memcpy(&expiry, payload, otaExpirySize);
+        if (expiry < now)
         {
-            sendErrorResponse("Malformed auth request", "");
-            return;
+            LOGN("OTA WS token expired.");
+            return false;
         }
 
-        separator[0] = 0;
-        char *password = separator+1;
-
-        if (strcmp(usernameAndPassword, ESP_CONFIG_PAGE::username.c_str()) != 0 ||
-            strcmp(password, ESP_CONFIG_PAGE::password.c_str()) != 0)
-        {
-            sendErrorResponse("", "Invalid auth.");
-            return;
-        }
-
-        if (otaClient != nullptr)
-        {
-            otaClient->authed = true;
-            if (otaStarted)
-            {
-                sendResponse("", NEXT_CHUNK);
-            }
-            else
-            {
-                sendResponse("", AUTH_SUCCESS);
-            }
-        }
+        return true;
     }
 
     inline void handleEvent(uint8_t *payload, size_t payloadLen, size_t totalLen, bool isLast)
     {
         switch (otaClient->currentEvent)
                 {
-                case OtaEventType::RECONNECTION:
-                case OtaEventType::AUTH:
-                    {
-                        otaWsValidateAuth(otaClient->currentEvent, payload, payloadLen);
-                        break;
-                    }
                 case OtaEventType::START_FIRMWARE:
                     {
-                        ESP_CONP_WS_CHECK_AUTH();
                         if (!otaStarted)
                         {
                             isOtaFilesystem = false;
@@ -604,7 +590,6 @@ namespace ESP_CONFIG_PAGE
                     }
                 case OtaEventType::START_FILESYSTEM:
                     {
-                        ESP_CONP_WS_CHECK_AUTH();
                         if (!otaStarted)
                         {
                             isOtaFilesystem = true;
@@ -615,7 +600,6 @@ namespace ESP_CONFIG_PAGE
                     }
                 case OtaEventType::END:
                     {
-                        ESP_CONP_WS_CHECK_AUTH();
                         if (!otaStarted)
                         {
                             sendErrorResponse("OTA not started", "");
@@ -627,7 +611,6 @@ namespace ESP_CONFIG_PAGE
                     }
                 case OtaEventType::WRITE:
                     {
-                        ESP_CONP_WS_CHECK_AUTH();
                         if (otaStarted && payloadLen > 0)
                         {
                             otaWrite(payload, payloadLen);
@@ -748,6 +731,10 @@ namespace ESP_CONFIG_PAGE
 
     inline void enableOtaModule()
     {
+#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        addServerHandler("/config/update/token", HTTP_GET, handleTokenGen);
+#endif
+
 #if defined(ESP32_CONP_OTA_USE_WEBSOCKETS) && defined(ESP_CONP_HTTPS_SERVER)
         esp_event_handler_register(ESP_HTTP_SERVER_EVENT,
                                    HTTP_SERVER_EVENT_DISCONNECTED,
@@ -776,14 +763,27 @@ namespace ESP_CONFIG_PAGE
                         return ESP_FAIL;
                     }
 
+                    if (!otaWsValidateAuth(req))
+                    {
+                        sendInstantResponse(CONP_STATUS_CODE::UNAUTHORIZED, "invalid token", req);
+                        return ESP_FAIL;
+                    }
+
                     registerOtaClient(1);
                     otaClient->sockfd = httpd_req_to_sockfd(req);
+                    sendResponse("", OtaEventType::AUTH_SUCCESS);
                     return ESP_OK;
                 }
 
                 httpd_ws_frame_t frame{};
                 size_t bufferSize = 0;
                 int res = httpd_ws_recv_frame(req, &frame, 0);
+                if (res != ESP_OK)
+                {
+                    sendErrorResponse("", "error receiving data");
+                    return ESP_OK;
+                }
+
                 if (frame.len < eventBufferSize)
                 {
                     frame.payload = otaClient->eventBuffer;
@@ -868,6 +868,7 @@ namespace ESP_CONFIG_PAGE
 
                 LOGF("OTA client connected with id %d\n", clientId);
                 registerOtaClient(clientId);
+                sendResponse("", AUTH_SUCCESS);
             }
             else if (type == WS_EVT_DISCONNECT && otaClient != nullptr)
             {
@@ -951,10 +952,22 @@ namespace ESP_CONFIG_PAGE
             }
         });
 
+        ArMiddlewareCallback fn = [](AsyncWebServerRequest *request, ArMiddlewareNext next)
+        {
+            if (!otaWsValidateAuth(request))
+            {
+                sendInstantResponse(CONP_STATUS_CODE::UNAUTHORIZED, "invalid token", request);
+                return;
+            }
+
+            next();
+            refreshKey();
+        };
+
 #ifdef ESP_CONP_ASYNC_WEBSERVER
-        server->addHandler(&otaWebSockets);
+        server->addHandler(&otaWebSockets).addMiddleware(fn);
 #else
-        otaServer.addHandler(&otaWebSockets);
+        otaServer.addHandler(&otaWebSockets).addMiddleware(fn);
         otaServer.begin();
 #endif
 
@@ -1031,17 +1044,17 @@ namespace ESP_CONFIG_PAGE
         }
 
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+        if (millis() - lastOtaKeyGen > keyExpiration)
+        {
+            refreshKey();
+        }
+
         if (millis() - lastWsServerUpdate > 2000)
         {
             if (otaClient != nullptr)
             {
                 char str[] = {OtaEventType::PING, 0};
-                otaWebSockets.text(otaClient->id, str);
-            }
-
-            if (otaClient != nullptr && !otaClient->authed && millis() - otaClient->connectedTime > 5000)
-            {
-                sendErrorResponse("OTA Error: ", "Auth timeout");
+                otaSendText(str);
             }
 
             if (otaStarted && millis() - otaTimer > otaTimeout)

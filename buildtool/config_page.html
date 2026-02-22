@@ -776,7 +776,6 @@
     let otaTimeout = 1000;
 
     const otaWsEvents = {
-        AUTH: 'A',
         RECONNECTION: 'R',
         START_FILESYSTEM: 'U',
         START_FIRMWARE: 'u',
@@ -822,97 +821,94 @@
             console.log("Starting WS OTA upload.");
             showOtaLoader();
 
-            const file = input.files[0];
-            let otaSocket = new WebSocket((otaPort == 443 ? 'wss://' : 'ws://') + getHostWithoutPort() + ':' + otaPort + '/config/update/ws');
-            let error;
-
-            const sendNextChunk = async () => {
-                if (otaCurrentChunkOffset >= file.size) {
-                    console.log("All OTA chunks sent.");
-                    otaSocket.send(otaWsEvents.END);
+            doRequest('update/token', undefined, 'GET', undefined, (success, data) => {
+                if (!success) {
+                    alert('Error trying to start OTA upload, could not generate WebSocket connection token.');
                     return;
                 }
 
-                const chunk = file.slice(otaCurrentChunkOffset, otaCurrentChunkOffset + otaMaxLength);
-                const buffer = await chunk.arrayBuffer();
+                const file = input.files[0];
+                let otaSocket = new WebSocket(
+                    (otaPort == 443 ? 'wss://' : 'ws://') +
+                    getHostWithoutPort() + ':' + otaPort + '/config/update/ws?token=' + encodeURIComponent(data));
+                let error;
 
-                const header = new Uint8Array([otaWsEvents.WRITE.charCodeAt(0)]);
-
-                const combined = new Uint8Array(header.byteLength + buffer.byteLength);
-                combined.set(header, 0);
-                combined.set(new Uint8Array(buffer), 1);
-
-                console.log(`Sending OTA chunk ${otaCurrentChunkOffset}..${Math.min(otaCurrentChunkOffset + otaMaxLength, file.size)}`);
-                otaSocket.send(combined);
-                otaCurrentChunkOffset += otaMaxLength;
-                updateOtaLoader((otaCurrentChunkOffset * 100) / file.size);
-            };
-
-            otaSocket.onopen = () => {
-                console.log('OTA websocket connected.');
-
-                if (currentAuth) {
-                    setTimeout(() => {
-                        timeout = 1000;
-                        if (wsReconnection) {
-                            console.log("OTA is reconnection");
-                            otaSocket.send(otaWsEvents.RECONNECTION + (atob(currentAuth.split('Basic ')[1])));
-                        } else {
-                            otaSocket.send(otaWsEvents.AUTH + (atob(currentAuth.split('Basic ')[1])));
-                        }
-                    }, 300);
-                }
-            };
-
-            otaSocket.onmessage = function(event) {
-                if (!event || !event.data) {
-                    console.log("OTA event is undefined, ignoring.");
-                    return;
-                }
-
-                let eventString = event.data + "";
-                let eventType = eventString[0];
-                if (eventType == otaWsEvents.ERROR) {
-                    error = eventString.substring(1);
-                    otaSocket.close();
-                } else if (eventType == otaWsEvents.SUCCESS) {
-                    error = undefined;
-                    otaSocket.close();
-                    finishOta();
-                } else if (eventType == otaWsEvents.NEXT_CHUNK) {
-                    lastConfirmedChunkOffset = otaCurrentChunkOffset;
-                    sendNextChunk();
-                } else if (eventString == otaWsEvents.AUTH_SUCCESS) {
-                    if (hasMd5) {
-                        const reader = new FileReader();
-
-                        reader.onload = () => {
-                            const hash = md5(new Uint8Array(reader.result));
-                            const corruptedHash = "0" + hash.substring(1);
-                            console.log("Generated MD5 for ota: " + hash);
-                            // console.log("Corrupted hash: " + corruptedHash);
-                            otaSocket.send((isUploadFirmware ? otaWsEvents.START_FIRMWARE : otaWsEvents.START_FILESYSTEM) + hash);
-                            // otaSocket.send((isUploadFirmware ? otaWsEvents.START_FIRMWARE : otaWsEvents.START_FILESYSTEM) + corruptedHash);
-                        };
-
-                        reader.readAsArrayBuffer(file);
-                    } else {
-                        otaSocket.send(isUploadFirmware ? otaWsEvents.START_FIRMWARE : otaWsEvents.START_FILESYSTEM);
+                const sendNextChunk = async () => {
+                    if (otaCurrentChunkOffset >= file.size) {
+                        console.log("All OTA chunks sent.");
+                        otaSocket.send(otaWsEvents.END);
+                        return;
                     }
-                }
-            };
 
-            otaSocket.onclose = function(e) {
-                if (error) {
-                    console.log("OTA error: " + error);
-                    finishOta(error);
-                    return;
-                }
+                    const chunk = file.slice(otaCurrentChunkOffset, otaCurrentChunkOffset + otaMaxLength);
+                    const buffer = await chunk.arrayBuffer();
 
-                console.log('OTA socket is closed. Reconnect will be attempted in ' + (otaTimeout / 1000) + ' seconds.');
-                otaCurrentChunkOffset = lastConfirmedChunkOffset;
-                setTimeout(() => onOtaUpload(hasFile, true), Math.min(15000, otaTimeout = otaTimeout * 1.3));
-            };
+                    const header = new Uint8Array([otaWsEvents.WRITE.charCodeAt(0)]);
+
+                    const combined = new Uint8Array(header.byteLength + buffer.byteLength);
+                    combined.set(header, 0);
+                    combined.set(new Uint8Array(buffer), 1);
+
+                    console.log(`Sending OTA chunk ${otaCurrentChunkOffset}..${Math.min(otaCurrentChunkOffset + otaMaxLength, file.size)}`);
+                    otaSocket.send(combined);
+                    otaCurrentChunkOffset += otaMaxLength;
+                    updateOtaLoader((otaCurrentChunkOffset * 100) / file.size);
+                };
+
+                otaSocket.onopen = () => {
+                    console.log('OTA websocket connected.');
+                };
+
+                otaSocket.onmessage = function(event) {
+                    if (!event || !event.data) {
+                        console.log("OTA event is undefined, ignoring.");
+                        return;
+                    }
+
+                    let eventString = event.data + "";
+                    let eventType = eventString[0];
+                    if (eventType == otaWsEvents.ERROR) {
+                        error = eventString.substring(1);
+                        otaSocket.close();
+                    } else if (eventType == otaWsEvents.SUCCESS) {
+                        error = undefined;
+                        otaSocket.close();
+                        finishOta();
+                    } else if (eventType == otaWsEvents.NEXT_CHUNK) {
+                        lastConfirmedChunkOffset = otaCurrentChunkOffset;
+                        sendNextChunk();
+                    } else if (eventString == otaWsEvents.AUTH_SUCCESS) {
+                        if (hasMd5) {
+                            const reader = new FileReader();
+
+                            reader.onload = () => {
+                                const hash = md5(new Uint8Array(reader.result));
+                                const corruptedHash = "0" + hash.substring(1);
+                                console.log("Generated MD5 for ota: " + hash);
+                                // console.log("Corrupted hash: " + corruptedHash);
+                                otaSocket.send((isUploadFirmware ? otaWsEvents.START_FIRMWARE : otaWsEvents.START_FILESYSTEM) + hash);
+                                // otaSocket.send((isUploadFirmware ? otaWsEvents.START_FIRMWARE : otaWsEvents.START_FILESYSTEM) + corruptedHash);
+                            };
+
+                            reader.readAsArrayBuffer(file);
+                        } else {
+                            otaSocket.send(isUploadFirmware ? otaWsEvents.START_FIRMWARE : otaWsEvents.START_FILESYSTEM);
+                        }
+                    }
+                };
+
+                otaSocket.onclose = function(e) {
+                    if (error) {
+                        console.log("OTA error: " + error);
+                        finishOta(error);
+                        return;
+                    }
+
+                    console.log('OTA socket is closed. Reconnect will be attempted in ' + (otaTimeout / 1000) + ' seconds.');
+                    otaCurrentChunkOffset = lastConfirmedChunkOffset;
+                    setTimeout(() => onOtaUpload(hasFile, true), Math.min(15000, otaTimeout = otaTimeout * 1.3));
+                };
+            }, true);
 
             return;
         } else if (hasFile) {

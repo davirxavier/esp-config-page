@@ -21,12 +21,22 @@
   "platforms":
   [
     "espressif8266",
-    "esp32"
+    "espressif32"
   ],
   "dependencies": [
     {
       "name": "asyncWebServer",
       "version": "esp32async/ESPAsyncWebServer@3.10.0"
+    },
+    {
+      "name": "base64densaugeo",
+      "version": "densaugeo/base64@^1.4.0",
+      "platforms": ["espressif8266"]
+    },
+    {
+      "name": "esp82266truerandom",
+      "version": "https://github.com/davirxavier/ESP8266TrueRandom.git",
+      "platforms": ["espressif8266"]
     }
   ]
 }
