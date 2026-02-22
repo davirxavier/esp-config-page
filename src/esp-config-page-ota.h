@@ -533,11 +533,8 @@ namespace ESP_CONFIG_PAGE
     };
 
 #if defined(ESP32_CONP_OTA_USE_WEBSOCKETS)
-    inline bool otaWsValidateAuth(REQUEST_T request)
+    inline bool otaWsValidateAuth(const char *authParam)
     {
-        char authParam[96]{};
-        getParam(request, "token", authParam, sizeof(authParam));
-
         uint8_t tokenBytes[96]{};
         size_t written = 0;
         ESP_CONFIG_PAGE_CRYPTO::base64Decode((uint8_t*) authParam, strlen(authParam), tokenBytes, sizeof(tokenBytes), written);
@@ -763,7 +760,9 @@ namespace ESP_CONFIG_PAGE
                         return ESP_FAIL;
                     }
 
-                    if (!otaWsValidateAuth(req))
+                    char tokenParam[96]{};
+                    getParam(req, "token", tokenParam, sizeof(tokenParam));
+                    if (!otaWsValidateAuth(tokenParam))
                     {
                         sendInstantResponse(CONP_STATUS_CODE::UNAUTHORIZED, "invalid token", req);
                         return ESP_FAIL;
@@ -954,9 +953,9 @@ namespace ESP_CONFIG_PAGE
 
         ArMiddlewareCallback fn = [](AsyncWebServerRequest *request, ArMiddlewareNext next)
         {
-            if (!otaWsValidateAuth(request))
+            if (request->hasParam("token") && !otaWsValidateAuth(request->getParam("token")->value().c_str()))
             {
-                sendInstantResponse(CONP_STATUS_CODE::UNAUTHORIZED, "invalid token", request);
+                request->send(401, "text/plain", "invalid token");
                 return;
             }
 
