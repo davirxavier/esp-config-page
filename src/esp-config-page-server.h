@@ -108,8 +108,15 @@ namespace ESP_CONFIG_PAGE
     ESP_CONP_INLINE int registeredHandlers = 0;
 
 #ifdef ESP_CONP_HTTPS_SERVER
+    ESP_CONP_INLINE bool isServerInsecure = false;
+
     inline void setupServerConfig(httpd_ssl_config *sslConfig)
     {
+        if (sslConfig->transport_mode == HTTPD_SSL_TRANSPORT_INSECURE)
+        {
+            isServerInsecure = true;
+        }
+
         ESP_CONFIG_PAGE::LittleFSKeyValueStorage storage(ESP_CONP_CERT_FOLDER);
         ESP_CONFIG_PAGE_CERT::initModule(&storage);
 
@@ -117,8 +124,7 @@ namespace ESP_CONFIG_PAGE
         sslConfig->prvtkey_len = ESP_CONFIG_PAGE_CERT::keyLen + 1;
         sslConfig->servercert = (uint8_t*) ESP_CONFIG_PAGE_CERT::certBuffer;
         sslConfig->servercert_len = ESP_CONFIG_PAGE_CERT::certLen + 1;
-        sslConfig->port_secure = 443;
-        sslConfig->httpd.max_uri_handlers = 20;
+        sslConfig->httpd.max_uri_handlers = 25;
         sslConfig->httpd.lru_purge_enable = true;
     }
 #endif

@@ -56,8 +56,12 @@
 // #define ESP_CONP_WS_BUFFER_SIZE 4096
 
 // Port for the OTA WebSockets server. Change if you need to use this port.
-#ifdef ESP_CONP_ASYNC_WEBSERVER
+#if ESP_CONP_ASYNC_WEBSERVER
 #define ESP32_CONP_OTA_WS_PORT 80
+#elifdef ESP_CONP_HTTPS_SERVER
+#ifndef ESP32_CONP_OTA_WS_PORT
+#define ESP32_CONP_OTA_WS_PORT 443
+#endif
 #else
 #ifndef ESP32_CONP_OTA_WS_PORT
 #define ESP32_CONP_OTA_WS_PORT 9000
@@ -77,7 +81,8 @@
 #endif
 #endif
 
-#if ESP_CONP_WS_BUFFER_SIZE < 64
+#define ESP_CONP_WS_MIN_BUFFER_SIZE 64
+#if ESP_CONP_WS_BUFFER_SIZE < ESP_CONP_WS_MIN_BUFFER_SIZE
 #error "WebSocket buffer size too small!"
 #endif
 
@@ -102,6 +107,11 @@ namespace ESP_CONFIG_PAGE
 {
     inline void getInfo(REQUEST_T request)
     {
+        int otaWsPort = ESP32_CONP_OTA_WS_PORT;
+#ifdef ESP_CONP_HTTPS_SERVER
+        otaWsPort = isServerInsecure ? 80 : otaWsPort;
+#endif
+
         String mac = WiFi.macAddress();
 
         size_t infoSize = 0;
@@ -135,7 +145,7 @@ namespace ESP_CONFIG_PAGE
         infoSize += strlen(otaWsStatus);
 
         infoSize += ESP_CONP_NUM_LEN("%zu", ESP_CONP_WS_BUFFER_SIZE-32) + 1;
-        infoSize += ESP_CONP_NUM_LEN("%zu", ESP32_CONP_OTA_WS_PORT) + 1;
+        infoSize += ESP_CONP_NUM_LEN("%zu", otaWsPort) + 1;
         infoSize += ESP_CONP_NUM_LEN("%zu", ESP_CONP_LOGGING_PORT) + 1;
 
         char numBuf[33]{};
@@ -182,7 +192,7 @@ namespace ESP_CONFIG_PAGE
         writeResponse(numBuf, context);
         writeResponse("+", context);
 
-        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", ESP32_CONP_OTA_WS_PORT);
+        ESP_CONP_WRITE_NUMBUF(numBuf, "%zu", otaWsPort);
         writeResponse(numBuf, context);
         writeResponse("+", context);
 

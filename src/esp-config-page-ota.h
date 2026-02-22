@@ -19,7 +19,7 @@
 #include <Update.h>
 #endif
 
-#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
+#if defined(ESP32_CONP_OTA_USE_WEBSOCKETS) && !defined(ESP_CONP_HTTPS_SERVER)
 #include <ESPAsyncWebServer.h>
 #endif
 
@@ -70,19 +70,34 @@ namespace ESP_CONFIG_PAGE
 
 
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
-#define ESP_CONP_WS_CHECK_AUTH() if (!otaClient->authed) {sendErrorResponse("", "Not authenticated."); return; }
-#ifndef ESP_CONP_ASYNC_WEBSERVER
-    ESP_CONP_INLINE AsyncWebServer otaServer(ESP32_CONP_OTA_WS_PORT);
-#endif
+    static const size_t eventBufferSize = 256;
 
     struct OtaClient
     {
         int id = -1;
         unsigned long connectedTime = 0;
         bool authed = false;
+
+        uint8_t eventBuffer[eventBufferSize]{};
+        size_t dataOffset = 0;
+        int currentEvent = -1;
+
+#ifdef ESP_CONP_HTTPS_SERVER
+        uint8_t *writeBuffer = nullptr;
+        size_t writeBufferSize = ESP_CONP_WS_BUFFER_SIZE;
+        int sockfd = -1;
+#endif
     };
 
+#define ESP_CONP_WS_CHECK_AUTH() if (!otaClient->authed) {sendErrorResponse("", "Not authenticated."); return; }
+#if !defined(ESP_CONP_ASYNC_WEBSERVER) && !defined(ESP_CONP_HTTPS_SERVER)
+    ESP_CONP_INLINE AsyncWebServer otaServer(ESP32_CONP_OTA_WS_PORT);
+#endif
+
+#ifndef ESP_CONP_HTTPS_SERVER
     ESP_CONP_INLINE AsyncWebSocket otaWebSockets("/config/update/ws");
+#endif
+
     ESP_CONP_INLINE OtaClient *otaClient = nullptr;
     ESP_CONP_INLINE unsigned long lastWsServerUpdate = 0;
 #else
@@ -166,11 +181,19 @@ namespace ESP_CONFIG_PAGE
     {
         if (otaClient != nullptr)
         {
+#ifdef ESP_CONP_HTTPS_SERVER
+            if (otaClient->writeBuffer != nullptr)
+            {
+                free(otaClient->writeBuffer);
+            }
+#endif
+
             delete otaClient;
             otaClient = nullptr;
         }
 
         otaClient = new OtaClient(id, millis(), false);
+        LOGF("Registered OTA client with ID %d\n", id);
     }
 
     inline void releaseOtaClient()
@@ -180,11 +203,34 @@ namespace ESP_CONFIG_PAGE
             return;
         }
 
+        LOGN("Releasing OTA client.");
+
+#ifdef ESP_CONP_HTTPS_SERVER
+        if (otaClient->id >= 0 && otaClient->sockfd >= 0)
+        {
+            httpd_ws_frame frame {
+                .final = true,
+                .fragmented = false,
+                .type = HTTPD_WS_TYPE_CLOSE,
+                .payload = nullptr,
+                .len = 0,
+            };
+            httpd_ws_send_frame_async(*server, otaClient->sockfd, &frame);
+            httpd_sess_trigger_close(*server, otaClient->sockfd);
+
+            if (otaClient->writeBuffer != nullptr)
+            {
+                free(otaClient->writeBuffer);
+                otaClient->writeBuffer = nullptr;
+            }
+        }
+#else
         AsyncWebSocketClient *client = otaWebSockets.client(otaClient->id);
         if (client != nullptr && client->status() == WS_CONNECTED)
         {
             client->close();
         }
+#endif
 
         delete otaClient;
         otaClient = nullptr;
@@ -214,12 +260,37 @@ namespace ESP_CONFIG_PAGE
         otaRestart = true;
     }
 
+    inline void otaSendText(const char *toSend)
+    {
+#ifdef ESP_CONP_HTTPS_SERVER
+        if (otaClient == nullptr)
+        {
+            return;
+        }
+
+        httpd_ws_frame_t frame = {
+            .final = true,
+            .fragmented = false,
+            .type = HTTPD_WS_TYPE_TEXT,
+            .payload = (uint8_t *) toSend,
+            .len = strlen(toSend),
+        };
+        int res = httpd_ws_send_frame_async(*server, otaClient->sockfd, &frame);
+        if (res != ESP_OK)
+        {
+            LOGF("Error sending response frame: 0x%x\n", res);
+        }
+#else
+        otaWebSockets.text(otaClient->id, toSend);
+#endif
+    }
+
     inline void sendResponse(const char *status, OtaEventType eventType = SUCCESS)
     {
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
         char toSend[strlen(status) + 3]{};
         snprintf(toSend, sizeof(toSend), "%c%s", eventType, status);
-        otaWebSockets.text(otaClient->id, toSend);
+        otaSendText(toSend);
 #else
         sendInstantResponse(CONP_STATUS_CODE::OK, status, currentRequest);
 #endif
@@ -231,7 +302,7 @@ namespace ESP_CONFIG_PAGE
         snprintf(toSend, sizeof(toSend), "%c%s%s", eventType, header, err);
 
 #ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
-        otaWebSockets.text(otaClient->id, toSend);
+        otaSendText(toSend);
         releaseOtaClient();
 #else
         sendInstantResponse(CONP_STATUS_CODE::BAD_REQUEST, toSend, currentRequest);
@@ -459,7 +530,125 @@ namespace ESP_CONFIG_PAGE
         UPLOAD_ABORT,
     };
 
-#if !defined(ESP32_CONP_OTA_USE_WEBSOCKETS)
+#if defined(ESP32_CONP_OTA_USE_WEBSOCKETS)
+    inline void otaWsValidateAuth(uint8_t currentEvent, uint8_t *payload, size_t payloadLen)
+    {
+        if (currentEvent == OtaEventType::AUTH && otaStarted)
+        {
+            LOGN("Had another OTA running already, aborting.");
+            otaAbort();
+        }
+
+        constexpr size_t MAX_AUTH_LEN = 256;
+        if (payloadLen == 0 || payloadLen > MAX_AUTH_LEN)
+        {
+            sendErrorResponse("", "Invalid auth length.");
+            return;
+        }
+
+        char usernameAndPassword[MAX_AUTH_LEN + 1] = {};
+        memcpy(usernameAndPassword, payload, payloadLen);
+        usernameAndPassword[payloadLen] = '\0';
+
+        char *separator = strchr(usernameAndPassword, ':');
+        if (separator == nullptr)
+        {
+            sendErrorResponse("Malformed auth request", "");
+            return;
+        }
+
+        separator[0] = 0;
+        char *password = separator+1;
+
+        if (strcmp(usernameAndPassword, ESP_CONFIG_PAGE::username.c_str()) != 0 ||
+            strcmp(password, ESP_CONFIG_PAGE::password.c_str()) != 0)
+        {
+            sendErrorResponse("", "Invalid auth.");
+            return;
+        }
+
+        if (otaClient != nullptr)
+        {
+            otaClient->authed = true;
+            if (otaStarted)
+            {
+                sendResponse("", NEXT_CHUNK);
+            }
+            else
+            {
+                sendResponse("", AUTH_SUCCESS);
+            }
+        }
+    }
+
+    inline void handleEvent(uint8_t *payload, size_t payloadLen, size_t totalLen, bool isLast)
+    {
+        switch (otaClient->currentEvent)
+                {
+                case OtaEventType::RECONNECTION:
+                case OtaEventType::AUTH:
+                    {
+                        otaWsValidateAuth(otaClient->currentEvent, payload, payloadLen);
+                        break;
+                    }
+                case OtaEventType::START_FIRMWARE:
+                    {
+                        ESP_CONP_WS_CHECK_AUTH();
+                        if (!otaStarted)
+                        {
+                            isOtaFilesystem = false;
+                            otaStart(payloadLen == 0 ? nullptr : (char*) payload);
+                            sendResponse("", OtaEventType::NEXT_CHUNK);
+                        }
+                        break;
+                    }
+                case OtaEventType::START_FILESYSTEM:
+                    {
+                        ESP_CONP_WS_CHECK_AUTH();
+                        if (!otaStarted)
+                        {
+                            isOtaFilesystem = true;
+                            otaStart(payloadLen == 0 ? nullptr : (char*) payload);
+                            sendResponse("", OtaEventType::NEXT_CHUNK);
+                        }
+                        break;
+                    }
+                case OtaEventType::END:
+                    {
+                        ESP_CONP_WS_CHECK_AUTH();
+                        if (!otaStarted)
+                        {
+                            sendErrorResponse("OTA not started", "");
+                            return;
+                        }
+
+                        otaFinish();
+                        break;
+                    }
+                case OtaEventType::WRITE:
+                    {
+                        ESP_CONP_WS_CHECK_AUTH();
+                        if (otaStarted && payloadLen > 0)
+                        {
+                            otaWrite(payload, payloadLen);
+
+                            if (isLast)
+                            {
+                                LOGF("Written %zu bytes to OTA partition.\n", totalLen);
+                                sendResponse("", NEXT_CHUNK);
+                            }
+                        }
+                        break;
+                    }
+                default:
+                    {
+                        LOGF("Invalid OTA event: %d\n", otaClient->currentEvent);
+                        sendErrorResponse("Invalid event received", "");
+                        break;
+                    }
+                }
+    }
+#else
     inline void handleUpdate(bool filesystem, REQUEST_T request, uint8_t *data, size_t len, UploadEventType event, bool writeOnStart = false)
     {
         isOtaFilesystem = filesystem;
@@ -555,16 +744,116 @@ namespace ESP_CONFIG_PAGE
         handleUpdate(filesystem, request, {}, 0, UPLOAD_END);
     }
 #endif
-
 #endif
 
     inline void enableOtaModule()
     {
-#ifdef ESP32_CONP_OTA_USE_WEBSOCKETS
-        static uint8_t currentEvent = INVALID;
-        static constexpr size_t dataBufferSize = 256;
-        static uint8_t dataBuffer[dataBufferSize]{};
+#if defined(ESP32_CONP_OTA_USE_WEBSOCKETS) && defined(ESP_CONP_HTTPS_SERVER)
+        esp_event_handler_register(ESP_HTTP_SERVER_EVENT,
+                                   HTTP_SERVER_EVENT_DISCONNECTED,
+                                   [](void *arg, esp_event_base_t base, int32_t id, void *event_data)
+                                   {
+                                       int sockfd = *(int *) event_data;
+                                       if (otaClient != nullptr && otaClient->sockfd >= 0 && otaClient->sockfd == sockfd)
+                                       {
+                                           LOGN("OTA client disconnected.");
+                                           releaseOtaClient();
+                                       }
+                                   },
+                                   nullptr);
 
+        static const httpd_uri_t wsHandler {
+            .uri = "/config/update/ws",
+            .method = HTTP_GET,
+            .handler = [](httpd_req_t *req)
+            {
+                if (req->method == HTTP_GET)
+                {
+                    LOGN("OTA Client connected.");
+                    if (hasOtaClient())
+                    {
+                        sendErrorResponse("", "socket full");
+                        return ESP_FAIL;
+                    }
+
+                    registerOtaClient(1);
+                    otaClient->sockfd = httpd_req_to_sockfd(req);
+                    return ESP_OK;
+                }
+
+                httpd_ws_frame_t frame{};
+                size_t bufferSize = 0;
+                int res = httpd_ws_recv_frame(req, &frame, 0);
+                if (frame.len < eventBufferSize)
+                {
+                    frame.payload = otaClient->eventBuffer;
+                    bufferSize = eventBufferSize-1;
+                    memset(otaClient->eventBuffer, 0, eventBufferSize);
+                }
+                else if (frame.len <= ESP_CONP_WS_BUFFER_SIZE)
+                {
+                    if (otaClient->writeBuffer == nullptr)
+                    {
+                        otaClient->writeBuffer = (uint8_t*) malloc(otaClient->writeBufferSize);
+                        if (otaClient->writeBuffer == nullptr)
+                        {
+                            sendErrorResponse("", "could not allocate write buffer");
+                            return ESP_OK;
+                        }
+                    }
+
+                    frame.payload = otaClient->writeBuffer;
+                    bufferSize = otaClient->writeBufferSize-1;
+                    memset(otaClient->writeBuffer, 0, otaClient->writeBufferSize);
+                }
+                else
+                {
+                    LOGN("OTA frame too big.");
+                    sendErrorResponse("", "ota frame to big");
+                    return ESP_OK;
+                }
+
+                res = httpd_ws_recv_frame(req, &frame, bufferSize);
+                if (res != ESP_OK)
+                {
+                    LOGF("Error receiving OTA frame: 0x%x\n", res);
+                    sendErrorResponse("", "error receiving frame");
+                    return ESP_OK;
+                }
+
+                uint8_t *buffer = frame.payload;
+                buffer[frame.len] = 0;
+
+                if (otaClient == nullptr)
+                {
+                    sendErrorResponse("", "invalid client state");
+                    return ESP_FAIL;
+                }
+
+                if (frame.len < 1)
+                {
+                    sendErrorResponse("", "invalid event");
+                    return ESP_FAIL;
+                }
+
+                otaClient->currentEvent = frame.payload[0];
+                handleEvent(frame.payload+1, frame.len-1, frame.len, true);
+
+                if (otaClient != nullptr)
+                {
+                    otaClient->currentEvent = -1;
+                }
+
+                return ESP_OK;
+            },
+            .is_websocket = true,
+        };
+        int res = httpd_register_uri_handler(*server, &wsHandler);
+        if (res != ESP_OK)
+        {
+            LOGF("Error registering OTA WS handler: 0x%x\n", res);
+        }
+#elifdef ESP32_CONP_OTA_USE_WEBSOCKETS
         otaWebSockets.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len)
         {
             uint32_t clientId = client->id();
@@ -584,7 +873,7 @@ namespace ESP_CONFIG_PAGE
             {
                 LOGF("OTA client disconnected with id %d\n", clientId);
                 releaseOtaClient();
-                currentEvent = INVALID;
+                otaClient->currentEvent = INVALID;
             }
             else if (type == WS_EVT_DATA)
             {
@@ -617,7 +906,7 @@ namespace ESP_CONFIG_PAGE
                             return;
                         }
 
-                        currentEvent = data[0];
+                        otaClient->currentEvent = data[0];
                         payload = data + 1;
                         payloadLen = len - 1;
                         payloadIndex = 0;
@@ -635,140 +924,30 @@ namespace ESP_CONFIG_PAGE
                         payloadIndex = info->index - 1;
                     }
 
-                    if (currentEvent != WRITE)
+                    if (otaClient->currentEvent != WRITE)
                     {
-                        if ((payloadIndex + payloadLen) > dataBufferSize)
+                        if ((payloadIndex + payloadLen) > eventBufferSize)
                         {
                             sendErrorResponse("", "Payload too large for this event type.");
                             return;
                         }
 
-                        memcpy(dataBuffer + payloadIndex, payload, payloadLen);
+                        memcpy(otaClient->eventBuffer + payloadIndex, payload, payloadLen);
                     }
 
-                    if (currentEvent != WRITE && !isLast)
+                    if (otaClient->currentEvent != WRITE && !isLast)
                     {
                         return;
                     }
 
-                    if (currentEvent != WRITE)
+                    if (otaClient->currentEvent != WRITE)
                     {
-                        payload = dataBuffer;
+                        payload = otaClient->eventBuffer;
                         payloadLen = payloadIndex + payloadLen;
                     }
                 }
 
-                switch (currentEvent)
-                {
-                case OtaEventType::RECONNECTION:
-                case OtaEventType::AUTH:
-                    {
-                        if (currentEvent == OtaEventType::AUTH && otaStarted)
-                        {
-                            LOGN("Had another OTA running already, aborting.");
-                            otaAbort();
-                        }
-
-                        constexpr size_t MAX_AUTH_LEN = 128;
-
-                        if (payloadLen == 0 || payloadLen > MAX_AUTH_LEN)
-                        {
-                            sendErrorResponse("", "Invalid auth length.");
-                            return;
-                        }
-
-                        char usernameAndPassword[MAX_AUTH_LEN + 1] = {};
-                        memcpy(usernameAndPassword, payload, payloadLen);
-                        usernameAndPassword[payloadLen] = '\0';
-
-                        char *separator = strchr(usernameAndPassword, ':');
-                        if (separator == nullptr)
-                        {
-                            sendErrorResponse("Malformed auth request", "");
-                            return;
-                        }
-
-                        separator[0] = 0;
-                        char *password = separator+1;
-
-                        if (strcmp(usernameAndPassword, ESP_CONFIG_PAGE::username.c_str()) != 0 ||
-                            strcmp(password, ESP_CONFIG_PAGE::password.c_str()) != 0)
-                        {
-                            sendErrorResponse("", "Invalid auth.");
-                            delay(5000); // Prevent instant password checking
-                            return;
-                        }
-
-                        if (otaClient != nullptr)
-                        {
-                            otaClient->authed = true;
-                            if (otaStarted)
-                            {
-                                sendResponse("", NEXT_CHUNK);
-                            }
-                            else
-                            {
-                                sendResponse("", AUTH_SUCCESS);
-                            }
-                        }
-                        break;
-                    }
-                case OtaEventType::START_FIRMWARE:
-                    {
-                        ESP_CONP_WS_CHECK_AUTH();
-                        if (!otaStarted)
-                        {
-                            isOtaFilesystem = false;
-                            otaStart(payloadLen == 0 ? nullptr : (char*) payload);
-                            sendResponse("", OtaEventType::NEXT_CHUNK);
-                        }
-                        break;
-                    }
-                case OtaEventType::START_FILESYSTEM:
-                    {
-                        ESP_CONP_WS_CHECK_AUTH();
-                        if (!otaStarted)
-                        {
-                            isOtaFilesystem = true;
-                            otaStart(payloadLen == 0 ? nullptr : (char*) payload);
-                            sendResponse("", OtaEventType::NEXT_CHUNK);
-                        }
-                        break;
-                    }
-                case OtaEventType::END:
-                    {
-                        ESP_CONP_WS_CHECK_AUTH();
-                        if (!otaStarted)
-                        {
-                            sendErrorResponse("OTA not started", "");
-                            return;
-                        }
-
-                        otaFinish();
-                        break;
-                    }
-                case OtaEventType::WRITE:
-                    {
-                        ESP_CONP_WS_CHECK_AUTH();
-                        if (otaStarted && payloadLen > 0)
-                        {
-                            otaWrite(payload, payloadLen);
-
-                            if (isLast)
-                            {
-                                LOGF("Written %llu bytes to OTA partition.\n", info != nullptr ? info->len : 0);
-                                sendResponse("", NEXT_CHUNK);
-                            }
-                        }
-                        break;
-                    }
-                default:
-                    {
-                        LOGF("Invalid OTA event: %d\n", currentEvent);
-                        sendErrorResponse("Invalid event received", "");
-                        break;
-                    }
-                }
+                handleEvent(payload, payloadLen, info != nullptr ? info->len : 0, isLast);
             }
         });
 

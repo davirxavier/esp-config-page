@@ -823,7 +823,7 @@
             showOtaLoader();
 
             const file = input.files[0];
-            let otaSocket = new WebSocket('ws://' + getHostWithoutPort() + ':' + otaPort + '/config/update/ws');
+            let otaSocket = new WebSocket((otaPort == 443 ? 'wss://' : 'ws://') + getHostWithoutPort() + ':' + otaPort + '/config/update/ws');
             let error;
 
             const sendNextChunk = async () => {
